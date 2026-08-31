@@ -107,7 +107,7 @@ export function MotionGraphicsOverlay({
               key={`${scene.id}-video`}
               src={scene.videoUrl}
               poster={scene.imageUrl ?? undefined}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
               autoPlay
               muted
               loop
@@ -120,7 +120,7 @@ export function MotionGraphicsOverlay({
               key={`${scene.id}-img`}
               src={scene.imageUrl}
               alt=""
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />
           ) : null}
         </div>

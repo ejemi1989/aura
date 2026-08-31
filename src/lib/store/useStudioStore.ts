@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   AgentActivityEvent,
   AgentId,
@@ -105,77 +106,10 @@ interface StudioState {
   }) => void;
 }
 
-export const useStudioStore = create<StudioState>((set, get) => ({
-  project: emptyProject(),
-  agentStatus: {
-    "creative-director": "idle",
-    "brand-strategist": "idle",
-    scriptwriter: "idle",
-    copywriter: "idle",
-    "graphic-designer": "idle",
-    "motion-graphics": "idle",
-    voiceover: "idle",
-    "video-editor": "idle",
-    "critic-qa": "idle",
-    "project-manager": "idle",
-  },
-  activity: [],
-  toolCalls: [],
-  pendingApprovals: [],
-  revisionRequest: null,
-  directorPlan: [],
-  directorLog: [],
-  isDirecting: false,
-
-  selectedSceneId: null,
-  playheadSeconds: 0,
-  timelineZoom: 24, // pixels per second — comfortable default
-  isPlaying: false,
-
-  setProjectMeta: (patch) =>
-    set((s) => ({ project: { ...s.project, ...patch, updatedAt: Date.now() } })),
-
-  setScenes: (scenes) =>
-    set((s) => ({ project: { ...s.project, scenes, updatedAt: Date.now() } })),
-
-  updateScene: (id, patch) =>
-    set((s) => ({
-      project: {
-        ...s.project,
-        scenes: s.project.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
-        updatedAt: Date.now(),
-      },
-    })),
-
-  addCaption: (caption) =>
-    set((s) => ({
-      project: { ...s.project, captions: [...s.project.captions, caption], updatedAt: Date.now() },
-    })),
-
-  setPhase: (phase) =>
-    set((s) => ({ project: { ...s.project, phase, updatedAt: Date.now() } })),
-
-  // Read-only accessors for readOnlyHint tools. Returning snapshots
-  // (not refs) so the tool result doesn't change underneath the caller.
-  getProject: () => get().project,
-  getPendingApprovals: () => get().pendingApprovals,
-
-  // Interactive editing mutators
-  selectScene: (id) => set({ selectedSceneId: id }),
-  setPlayhead: (seconds) => set({ playheadSeconds: Math.max(0, seconds) }),
-  setTimelineZoom: (px) => set({ timelineZoom: Math.max(8, Math.min(120, px)) }),
-  setIsPlaying: (playing) => set({ isPlaying: playing }),
-
-  resetProject: () =>
-    set(() => ({
+export const useStudioStore = create<StudioState>()(
+  persist(
+    (set, get) => ({
       project: emptyProject(),
-      activity: [],
-      toolCalls: [],
-      pendingApprovals: [],
-      revisionRequest: null,
-      selectedSceneId: null,
-      playheadSeconds: 0,
-      isPlaying: false,
       agentStatus: {
         "creative-director": "idle",
         "brand-strategist": "idle",
@@ -188,101 +122,187 @@ export const useStudioStore = create<StudioState>((set, get) => ({
         "critic-qa": "idle",
         "project-manager": "idle",
       },
-    })),
-
-  setAgentStatus: (agentId, status, message) => {
-    set((s) => ({ agentStatus: { ...s.agentStatus, [agentId]: status } }));
-    if (message) get().logActivity(agentId, status, message);
-  },
-
-  logActivity: (agentId, status, message) =>
-    set((s) => ({
-      activity: [
-        ...s.activity,
-        { id: newId("act"), agentId, status, message, timestamp: Date.now() },
-      ].slice(-200),
-    })),
-
-  startToolCall: (entry) => {
-    const id = entry.id ?? newId("call");
-    const newEntry: ToolCallLogEntry = { ...entry, id, status: "pending", startedAt: Date.now() };
-    set((s) => ({
-      toolCalls: [...s.toolCalls, newEntry].slice(-300),
-    }));
-    return id;
-  },
-
-  finishToolCall: (id, patch) =>
-    set((s) => ({
-      toolCalls: s.toolCalls.map((c) =>
-        c.id === id ? { ...c, ...patch, finishedAt: Date.now() } : c
-      ),
-    })),
-
-  requestApproval: (approval) => {
-    const id = newId("appr");
-    set((s) => ({
-      pendingApprovals: [...s.pendingApprovals, { ...approval, id, createdAt: Date.now() }],
-    }));
-    return id;
-  },
-
-  resolveApproval: (id, _approved) =>
-    set((s) => ({ pendingApprovals: s.pendingApprovals.filter((a) => a.id !== id) })),
-
-  requestRevision: (req) => {
-    // If the human asks for a scene that's already mid-refinement, keep the
-    // newest request (the latest intent wins). The Director consumes this at
-    // its next checkpoint and flips it to "applied".
-    set((s) => ({
-      revisionRequest: {
-        ...req,
-        status: "requested",
-        createdAt: Date.now(),
-      },
-    }));
-  },
-
-  clearRevision: () => set({ revisionRequest: null }),
-
-  pushDirectorMessage: (role, text) =>
-    set((s) => ({ directorLog: [...s.directorLog, { role, text, ts: Date.now() }] })),
-
-  setDirectorPlan: (plan) => set({ directorPlan: plan }),
-
-  setDirecting: (directing) => set({ isDirecting: directing }),
-
-  // Bulk-apply the server-side WebMCP agent snapshot into the client store a
-  // the UI renders. Only the server-visible slices are replaced; UI-only
-  // state (selection, playhead, zoom, director chat/plan, tool-call log) is
-  // left untouched so an external run doesn't nuke the judge's cursor.
-  hydrateFrom: (snap) =>
-    set((s) => ({
-      project: snap.project,
-      agentStatus: snap.agentStatus,
-      // Server activity events have no `id`; the feed needs one for a React
-      // key. Derive a stable unique key so external runs don't trip the
-      // "missing key" warning that surfaced in LiveActivityFeed.
-      activity: snap.activity.map((a, i) => ({
-        ...a,
-        id: a.id ?? `ext_${a.agentId}_${a.timestamp}_${i}`,
-      })),
-      pendingApprovals: snap.pendingApprovals.map((a) => ({ ...a, server: true })),
-      // Merge the server's tool-call log into the client's log so the
-      // Debug Panel shows external-agent calls (orange) with their
-      // provider + cost + latency. We merge by id and keep the client's
-      // own entries intact.
-      toolCalls: snap.toolCalls
-        ? (() => {
-            const have = new Set(s.toolCalls.map((c) => c.id));
-            const merged = [...s.toolCalls];
-            for (const c of snap.toolCalls!) {
-              if (!have.has(c.id)) merged.push(c as ToolCallLogEntry);
-            }
-            return merged.slice(-300);
-          })()
-        : s.toolCalls,
+      activity: [],
+      toolCalls: [],
+      pendingApprovals: [],
       revisionRequest: null,
-      ...(snap.project.id !== s.project.id ? { selectedSceneId: null, playheadSeconds: 0 } : {}),
-    })),
-}));
+      directorPlan: [],
+      directorLog: [],
+      isDirecting: false,
+
+      selectedSceneId: null,
+      playheadSeconds: 0,
+      timelineZoom: 24, // pixels per second — comfortable default
+      isPlaying: false,
+
+      setProjectMeta: (patch) =>
+        set((s) => ({ project: { ...s.project, ...patch, updatedAt: Date.now() } })),
+
+      setScenes: (scenes) =>
+        set((s) => ({ project: { ...s.project, scenes, updatedAt: Date.now() } })),
+
+      updateScene: (id, patch) =>
+        set((s) => ({
+          project: {
+            ...s.project,
+            scenes: s.project.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
+            updatedAt: Date.now(),
+          },
+        })),
+
+      addCaption: (caption) =>
+        set((s) => ({
+          project: { ...s.project, captions: [...s.project.captions, caption], updatedAt: Date.now() },
+        })),
+
+      setPhase: (phase) =>
+        set((s) => ({ project: { ...s.project, phase, updatedAt: Date.now() } })),
+
+      // Read-only accessors for readOnlyHint tools. Returning snapshots
+      // (not refs) so the tool result doesn't change underneath the caller.
+      getProject: () => get().project,
+      getPendingApprovals: () => get().pendingApprovals,
+
+      // Interactive editing mutators
+      selectScene: (id) => set({ selectedSceneId: id }),
+      setPlayhead: (seconds) => set({ playheadSeconds: Math.max(0, seconds) }),
+      setTimelineZoom: (px) => set({ timelineZoom: Math.max(8, Math.min(120, px)) }),
+      setIsPlaying: (playing) => set({ isPlaying: playing }),
+
+      resetProject: () =>
+        set(() => ({
+          project: emptyProject(),
+          activity: [],
+          toolCalls: [],
+          pendingApprovals: [],
+          revisionRequest: null,
+          selectedSceneId: null,
+          playheadSeconds: 0,
+          isPlaying: false,
+          agentStatus: {
+            "creative-director": "idle",
+            "brand-strategist": "idle",
+            scriptwriter: "idle",
+            copywriter: "idle",
+            "graphic-designer": "idle",
+            "motion-graphics": "idle",
+            voiceover: "idle",
+            "video-editor": "idle",
+            "critic-qa": "idle",
+            "project-manager": "idle",
+          },
+        })),
+
+      setAgentStatus: (agentId, status, message) => {
+        set((s) => ({ agentStatus: { ...s.agentStatus, [agentId]: status } }));
+        if (message) get().logActivity(agentId, status, message);
+      },
+
+      logActivity: (agentId, status, message) =>
+        set((s) => ({
+          activity: [
+            ...s.activity,
+            { id: newId("act"), agentId, status, message, timestamp: Date.now() },
+          ].slice(-200),
+        })),
+
+      startToolCall: (entry) => {
+        const id = entry.id ?? newId("call");
+        const newEntry: ToolCallLogEntry = { ...entry, id, status: "pending", startedAt: Date.now() };
+        set((s) => ({
+          toolCalls: [...s.toolCalls, newEntry].slice(-300),
+        }));
+        return id;
+      },
+
+      finishToolCall: (id, patch) =>
+        set((s) => ({
+          toolCalls: s.toolCalls.map((c) =>
+            c.id === id ? { ...c, ...patch, finishedAt: Date.now() } : c
+          ),
+        })),
+
+      requestApproval: (approval) => {
+        const id = newId("appr");
+        set((s) => ({
+          pendingApprovals: [...s.pendingApprovals, { ...approval, id, createdAt: Date.now() }],
+        }));
+        return id;
+      },
+
+      resolveApproval: (id, _approved) =>
+        set((s) => ({ pendingApprovals: s.pendingApprovals.filter((a) => a.id !== id) })),
+
+      requestRevision: (req) => {
+        // If the human asks for a scene that's already mid-refinement, keep the
+        // newest request (the latest intent wins). The Director consumes this at
+        // its next checkpoint and flips it to "applied".
+        set((s) => ({
+          revisionRequest: {
+            ...req,
+            status: "requested",
+            createdAt: Date.now(),
+          },
+        }));
+      },
+
+      clearRevision: () => set({ revisionRequest: null }),
+
+      pushDirectorMessage: (role, text) =>
+        set((s) => ({ directorLog: [...s.directorLog, { role, text, ts: Date.now() }] })),
+
+      setDirectorPlan: (plan) => set({ directorPlan: plan }),
+
+      setDirecting: (directing) => set({ isDirecting: directing }),
+
+      // Bulk-apply the server-side WebMCP agent snapshot into the client store a
+      // the UI renders. Only the server-visible slices are replaced; UI-only
+      // state (selection, playhead, zoom, director chat/plan, tool-call log) is
+      // left untouched so an external run doesn't nuke the judge's cursor.
+      hydrateFrom: (snap) =>
+        set((s) => ({
+          project: snap.project,
+          agentStatus: snap.agentStatus,
+          // Server activity events have no `id`; the feed needs one for a React
+          // key. Derive a stable unique key so external runs don't trip the
+          // "missing key" warning that surfaced in LiveActivityFeed.
+          activity: snap.activity.map((a, i) => ({
+            ...a,
+            id: a.id ?? `ext_${a.agentId}_${a.timestamp}_${i}`,
+          })),
+          pendingApprovals: snap.pendingApprovals.map((a) => ({ ...a, server: true })),
+          // Merge the server's tool-call log into the client's log so the
+          // Debug Panel shows external-agent calls (orange) with their
+          // provider + cost + latency. We merge by id and keep the client's
+          // own entries intact.
+          toolCalls: snap.toolCalls
+            ? (() => {
+                const have = new Set(s.toolCalls.map((c) => c.id));
+                const merged = [...s.toolCalls];
+                for (const c of snap.toolCalls!) {
+                  if (!have.has(c.id)) merged.push(c as ToolCallLogEntry);
+                }
+                return merged.slice(-300);
+              })()
+            : s.toolCalls,
+          revisionRequest: null,
+          ...(snap.project.id !== s.project.id ? { selectedSceneId: null, playheadSeconds: 0 } : {}),
+        })),
+    }),
+    {
+      name: "creative-studio-state",
+      storage: createJSONStorage(() => localStorage),
+      // Persist the whole project plus activity/approvals so a refresh
+      // keeps the already-generated scenes instead of auto-running a fresh
+      // (and API-costly) generation from a blank session.
+      partialize: (s) => ({
+        project: s.project,
+        agentStatus: s.agentStatus,
+        activity: s.activity,
+        pendingApprovals: s.pendingApprovals,
+        toolCalls: s.toolCalls,
+        revisionRequest: s.revisionRequest,
+      }),
+    }
+  )
+);

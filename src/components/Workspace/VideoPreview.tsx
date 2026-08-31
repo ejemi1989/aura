@@ -227,7 +227,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
                   ref={videoRef}
                   src={project.composedVideoUrl!}
                   poster={currentScene?.imageUrl ?? undefined}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                   controls={false}
                   onTimeUpdate={(e) => {
                     if (!isPlaying) return;
@@ -275,7 +275,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
                     key={`${currentScene.id}-raw`}
                     src={currentScene.videoUrl}
                     poster={currentScene.imageUrl ?? undefined}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                     autoPlay={isPlaying}
                     muted={isPlaying}
                     playsInline
@@ -301,7 +301,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
                     key={`${currentScene.id}-raw`}
                     src={currentScene.imageUrl}
                     alt={currentScene.voiceoverLine ?? currentScene.description}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-contain"
                   />
                 ) : null}
 
