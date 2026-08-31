@@ -9,7 +9,7 @@ import {
   colorGradeClass,
   type MotionDesign,
 } from "./patterns";
-import { LowerThird, SceneTitle, Callout, KineticCaption, Watermark } from "./KineticText";
+import { LowerThird, SceneTitle, Callout, Watermark } from "./KineticText";
 import { Particles } from "./Particles";
 import { TransitionEffect } from "./TransitionEffect";
 import "./MotionGraphics.css";
@@ -168,10 +168,12 @@ export function MotionGraphicsOverlay({
           />
         )}
 
-        {/* 8. Kinetic caption — BIG TEXT, per-word stagger. */}
-        {design.overlays.includes("kinetic-caption") && voiceoverLine && (
-          <KineticCaption text={voiceoverLine} />
-        )}
+        {/* 8. Kinetic caption — BIG TEXT, per-word stagger.
+            Removed per product direction: the narration script text no
+            longer overlays the footage so the scene video/image plays
+            clean without the words stealing focus. (KineticCaption is
+            still imported/available if we ever want it back.) */}
+
 
         {/* 9. Callout — pop-up label for key message. */}
         {design.overlays.includes("callout") && (
