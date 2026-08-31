@@ -1,0 +1,22 @@
+[
+  {
+    "channel": "script",
+    "messages": [],
+    "content": "{\"scenes\":[{\"index\":1,\"beatName\":\"Hook\",\"description\":\"Close-up of a fresh cup of cold brew on a marble counter, condensation beading as early light rakes across the steam.\",\"voiceoverLine\":\"Your mornings deserve better than bitter coffee. This is Sól, brewed cold, never burned.\",\"caption\":\"Cold, never bitter.\",\"durationEstimate\":6},{\"index\":2,\"beatName\":\"Pain\",\"description\":\"Split screen: a grimacing commuter sipping burnt diner coffee, then the same face relaxing over a smooth iced blend.\",\"voiceoverLine\":\"Hot-and-brewed coffee turns sharp and acidic the longer it sits.\",\"caption\":\"Hot coffee goes bitter.\",\"durationEstimate\":5},{\"index\":3,\"beatName\":\"Promise\",\"description\":\"Hero shot: an amber glass bottle of Sól tilted toward the camera, shadow on a warm stone backdrop.\",\"voiceoverLine\":\"Sól steeps for eighteen hours at cold temperature — so every sip is smooth, never harsh.\",\"caption\":\"18-hour cold steep.\",\"durationEstimate\":6},{\"index\":4,\"beatName\":\"Proof\",\"description\":\"Recipe-lab montage: a jar steeping, a timer, a single-origin bean close-up with the roast date on the bag.\",\"voiceoverLine\":\"Single-origin beans, steeped slow. No heat, no bitterness, no shortcuts.\",\"caption\":\"Slow-steeped. Single-origin.\",\"durationEstimate\":6},{\"index\":5,\"beatName\":\"CTA\",\"description\":\"Final frame: the bottle on a cafe counter beside a phone showing the Sól storefront, soft bokeh.\",\"voiceoverLine\":\"Try Sól and taste coffee the way it should have been all along.\",\"caption\":\"Try Sól today.\",\"durationEstimate\":5}]}"
+  },
+  {
+    "channel": "storyboard",
+    "messages": [],
+    "content": "{\"scenePrompts\":[{\"index\":1,\"prompt\":\"Cinematic macro close-up, 85mm, shallow depth of field: a glass of iced cold-brew coffee on a dark marble countertop, condensation droplets beading, warm golden morning light raking across the frame from the left, muted cream and espresso palette, premium minimalist aesthetic, high-contrast, editorial commercial still\"},{\"index\":2,\"prompt\":\"Split-screen diptych, two 35mm frames, cool blue color grade on the left showing a commuter wincing at hot bitter coffee, warm sunrise grade on the right showing relief over a smooth iced drink, film grain, cinematic lighting, editorial commercial still\"},{\"index\":3,\"prompt\":\"Hero product shot, low three-quarter angle, an amber glass bottle of cold-brew tilted toward a warm stone backdrop, single soft top-light, amber and terracotta palette, luxurious shadow play, minimalist premium commercial still\"},{\"index\":4,\"prompt\":\"Recipe-lab montage, overhead flat-lay, a glass jar steeping in water, a small timer, single-origin coffee beans scattered with a visible roast-date label, bright natural window light, warm neutral palette, clean editorial still\"},{\"index\":5,\"prompt\":\"Closing master shot, 50mm, a cold-brew bottle on a cafe counter beside a phone showing the cafe storefront, soft bokeh cafe background, warm inviting light, aspirational mood, premium commercial still\"}]}"
+  },
+  {
+    "channel": "review",
+    "messages": [],
+    "content": "{\"verdict\":\"APPROVED\",\"notes\":[\"Hook is tight and lands inside the first two seconds.\",\"Voiceover pacing matches the 18-hour steep premise without dragging.\",\"CTA is clear and on-platform.\",\"One note: scene 2's 'hot coffee goes bitter' line could punch up the contrast with a visual match on 'smooth'.\"]}"
+  },
+  {
+    "channel": "caption:on_screen_text",
+    "messages": [],
+    "content": "{\"text\":\"Cold, never bitter.\"}"
+  }
+]

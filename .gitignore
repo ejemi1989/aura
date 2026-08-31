@@ -1,0 +1,21 @@
+node_modules
+.next
+out
+.env
+.env.local
+*.log
+.DS_Store
+.studio-state.json
+tsconfig.tsbuildinfo
+
+# Runtime-generated demo/test assets (not source) — never commit
+public/assets/*.png
+public/assets/*.mp4
+public/assets/*.wav
+public/assets/*.mp3
+public/assets/bgm_*
+public/assets/i2v_*
+public/assets/img_*
+public/assets/t2v_*
+public/assets/tts_*
+public/assets/test/
