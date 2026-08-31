@@ -211,7 +211,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
           type="button"
           onClick={handlePlayPause}
           aria-label={isPlaying ? "Pause preview" : "Play preview"}
-          className="relative flex h-full w-full cursor-pointer items-center justify-center p-3 lg:p-4"
+          className="relative flex h-full w-full cursor-pointer items-center justify-center p-1 lg:p-1.5"
         >
           <div className="relative flex h-full w-full items-center justify-center">
             {isRendering ? (
@@ -221,8 +221,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
               </div>
             ) : hasComposedVideo ? (
               <div
-                className="relative max-h-full max-w-full overflow-hidden rounded shadow-2xl shadow-black/60 ring-1 ring-black/40"
-                style={{ aspectRatio: "16 / 9" }}
+                className="relative h-full w-full overflow-hidden rounded shadow-2xl shadow-black/60 ring-1 ring-black/40"
               >
                 <video
                   ref={videoRef}
@@ -314,24 +313,6 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
                     <Spinner size={20} />
                   </div>
                 )}
-
-                {/* Lower-third-style caption — sits below the motion
-                    graphics overlay so MG's own caption overlays
-                    (kinetic-caption) take priority. When motion is OFF
-                    we keep the static caption here for readability. */}
-                {!motionGraphicsEnabled && currentScene.caption && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent p-4 pt-12">
-                    <p className="text-center text-base font-semibold text-white drop-shadow-md">
-                      {currentScene.caption}
-                    </p>
-                  </div>
-                )}
-
-                {/* Scene number badge — always visible so the user can
-                    see "what scene am I watching" without ambiguity. */}
-                <div className="pointer-events-none absolute left-3 top-3 z-30 flex items-center gap-1.5 rounded bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">
-                  Scene {currentScene.index}
-                </div>
 
                 {/* Motion Graphics toggle — small pill in the corner so
                     the user can A/B compare "with motion graphics" vs

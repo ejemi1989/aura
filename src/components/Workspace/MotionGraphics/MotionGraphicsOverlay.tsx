@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Scene } from "@/types";
 import {
   pickMotionDesign,
   pickTransitionForBeat,
   patternClass,
   colorGradeClass,
-  type MotionDesign,
 } from "./patterns";
-import { LowerThird, SceneTitle, Callout, Watermark } from "./KineticText";
+// Text overlay imports removed — see comment in JSX about clean preview.
 import { Particles } from "./Particles";
 import { TransitionEffect } from "./TransitionEffect";
 import "./MotionGraphics.css";
@@ -44,11 +43,10 @@ interface MotionGraphicsOverlayProps {
  *   3. Vignette (radial dark overlay, optional)
  *   4. Light leak (warm sweep, optional)
  *   5. Particles (warm/cool/mixed, optional)
- *   6. Scene title (top eyebrow)
- *   7. Lower third (bottom bar with eyebrow + title)
- *   8. Kinetic caption (BIG TEXT, per-word stagger)
- *   9. Callout (small pop-up note)
- *  10. Watermark (top-right brand mark)
+ *
+ * Text overlays (LowerThird, SceneTitle, Callout, Watermark,
+ * KineticCaption) are intentionally excluded so the preview
+ * shows a clean visual without script text on screen.
  *
  * The wrapper element gets `key={scene.id}` so React remounts on
  * every scene change — this is what triggers CSS animations to
@@ -77,17 +75,6 @@ export function MotionGraphicsOverlay({
   const duration = Math.max(
     2,
     Math.min(20, scene.durationSeconds ?? totalDurationSeconds ?? 8)
-  );
-
-  // Brand mark for watermark — project name trimmed to 14 chars.
-  const watermark = (brand ?? "Creative Studio").slice(0, 14).toUpperCase();
-
-  // Lower-third copy — use beat name as eyebrow, scene description's
-  // first sentence as title. Falls back to voiceoverLine so the
-  // overlay always has something readable.
-  const ltEyebrow = (beatName ?? scene.beatName ?? "Scene").toUpperCase();
-  const ltTitle = firstSentence(
-    voiceoverLine ?? scene.voiceoverLine ?? scene.description ?? ""
   );
 
   if (!enabled) return null;
@@ -149,52 +136,13 @@ export function MotionGraphicsOverlay({
           <Particles count={design.particleCount} style={design.particles} />
         )}
 
-        {/* 6. Scene title — small eyebrow at top. */}
-        {design.overlays.includes("scene-title-eyebrow") && (
-          <SceneTitle
-            index={scene.index}
-            label={(beatName ?? scene.beatName ?? `Scene ${scene.index}`).toUpperCase()}
-            accent={design.accent}
-          />
-        )}
-
-        {/* 7. Lower third — branded bar with eyebrow + title. */}
-        {design.overlays.includes("lower-third") && (
-          <LowerThird
-            eyebrow={ltEyebrow}
-            title={ltTitle}
-            subtitle={scene.caption}
-            accent={design.accent}
-          />
-        )}
-
-        {/* 8. Kinetic caption — BIG TEXT, per-word stagger.
-            Removed per product direction: the narration script text no
-            longer overlays the footage so the scene video/image plays
-            clean without the words stealing focus. (KineticCaption is
-            still imported/available if we ever want it back.) */}
-
-
-        {/* 9. Callout — pop-up label for key message. */}
-        {design.overlays.includes("callout") && (
-          <Callout
-            text={scene.caption ?? "Key insight"}
-            position={{ top: "30%", right: "6%" }}
-            accent={design.accent}
-          />
-        )}
-
-        {/* 10. Watermark — top-right brand mark. */}
-        {design.overlays.includes("watermark") && <Watermark text={watermark} />}
+        {/* Text overlays (LowerThird, SceneTitle, Callout, Watermark)
+            removed — the preview shows only the scene image/video
+            with motion effects (Ken Burns, color grade, particles)
+            so the visual plays clean without script text overlays. */}
       </div>
     </TransitionEffect>
   );
 }
 
-function firstSentence(s: string): string {
-  const trimmed = (s ?? "").trim();
-  if (!trimmed) return "";
-  const dot = trimmed.indexOf(".");
-  if (dot > 0 && dot < 60) return trimmed.slice(0, dot);
-  return trimmed.slice(0, 60);
-}
+
