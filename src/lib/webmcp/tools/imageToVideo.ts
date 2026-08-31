@@ -3,6 +3,8 @@ import type { WebMCPTool } from "@/types";
 import { textResult } from "@/lib/webmcp/toolResult";
 import { defineTool } from "@/lib/webmcp/defineTool";
 import { threadArtifactToSupabase, threadToolRun } from "@/lib/supabase/threading";
+import { lookupCachedArtifact } from "@/lib/supabase/cache";
+import { extractStorageKey } from "@/lib/supabase/threading";
 import { upsertScene } from "@/lib/supabase/writers";
 
 type Store = ReturnType<typeof useStudioStore.getState>;
@@ -58,6 +60,64 @@ export function imageToVideoTool(store: Store): WebMCPTool<Input> {
           })
         : null;
       try {
+        // Cache-first: the same source visual + motion + duration already
+        // animated anywhere → reuse the stored clip for free, skip the paid
+        // Veo call (~$0.35/sec).
+        const sourceKey = extractStorageKey(scene.imageUrl);
+        const cached = await lookupCachedArtifact({
+          tool: "video",
+          prompt: scene.description,
+          model: "veo-3",
+          duration,
+          motionNotes,
+          inputArtifact: sourceKey ?? scene.imageUrl,
+        });
+        if (cached) {
+          store.updateScene(sceneId, {
+            videoUrl: cached.url,
+            durationSeconds: duration,
+            videoProvider: "cache",
+            videoLatencyMs: 0,
+            videoCostUsd: 0,
+          });
+          await threadArtifactToSupabase({
+            url: cached.url,
+            projectSupabaseId: supabaseProjectId,
+            sceneSupabaseId: supabaseSceneId,
+            type: "video",
+            mimeType: "video/mp4",
+            provider: "cache",
+            cacheInput: {
+              tool: "video",
+              prompt: scene.description,
+              model: "veo-3",
+              duration,
+              motionNotes,
+              inputArtifact: sourceKey ?? scene.imageUrl,
+            },
+            metadata: { cache_hit: true, cost_usd: 0, duration_seconds: duration },
+          });
+          await threadToolRun({
+            projectSupabaseId: supabaseProjectId,
+            sceneSupabaseId: supabaseSceneId,
+            toolName: "image_to_video",
+            agent: "motion-graphics",
+            status: "success",
+            input: { sceneId, imageUrl: scene.imageUrl, duration },
+            output: { url: cached.url, provider: "cache", cached: true },
+          });
+          store.setAgentStatus(
+            "motion-graphics",
+            "active",
+            `Reused cached ${duration}s animation for scene ${scene.index} (free, cached).`
+          );
+          const cachedResult: any = textResult(
+            `Reused cached ${duration}s animation for scene ${scene.index} (no API cost).`
+          );
+          cachedResult._meta = { provider: "cache", costUsd: 0, latencyMs: 0, cacheHit: true };
+          return cachedResult;
+        }
+
         const data = await callGenerate(
           "/api/generate/image-to-video",
           {
@@ -98,13 +158,11 @@ export function imageToVideoTool(store: Store): WebMCPTool<Input> {
             provider,
             cacheInput: {
               tool: "video",
-              projectName: store.project.name,
-              sceneNumber: scene.index,
               prompt: scene.description,
-              model: data.model,
+              model: data.model ?? "veo-3",
               duration,
               motionNotes,
-              inputArtifact: scene.imageUrl,
+              inputArtifact: sourceKey ?? scene.imageUrl,
             },
             metadata: {
               cost_usd: costUsd,

@@ -116,19 +116,11 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
   );
   await processVeto();
 
-  // 6. Animate every scene — also in parallel; Veo demo fallback is
-  //    fast (single ffmpeg invocation), and live Veo submissions are
-  //    async-queued. concurrency = 2 matches the Veo rate limiter's
-  //    default capacity so we don't queue submissions the limiter
-  //    would just hold anyway.
-  await runInParallel(scenes, "motion-graphics", async (scene) =>
-    runTool("image_to_video", {
-      sceneId: scene.id,
-      durationSeconds: 4,
-      motionNotes: "subtle, on-brand motion",
-    }),
-    { concurrency: 2, label: "in parallel" },
-  );
+  // 6. Motion — STILLS-DEFAULT. The on-screen motion-graphics overlay
+  //    (ken-burns, parallax, lower-thirds) already animates the stills on
+  //    playback, so we skip per-scene image_to_video (Veo 3 ~$0.35/sec)
+  //    by default. The `image_to_video` tool remains registered for
+  //    explicit user opt-in when a scene really needs full clip motion.
   await processVeto();
 
   // 7. Narration per scene — serialized (concurrency = 1). Speechify's

@@ -4,6 +4,7 @@ import { textResult } from "@/lib/webmcp/toolResult";
 import { defineTool } from "@/lib/webmcp/defineTool";
 import { threadArtifactToSupabase, threadToolRun } from "@/lib/supabase/threading";
 import { upsertScene } from "@/lib/supabase/writers";
+import { lookupCachedArtifact } from "@/lib/supabase/cache";
 
 type Store = ReturnType<typeof useStudioStore.getState>;
 type Input = { sceneId: string; line: string; voiceTone: "warm" | "energetic" | "authoritative" | "calm" | "playful" };
@@ -58,6 +59,67 @@ export function textToSpeechTool(store: Store): WebMCPTool<Input> {
           })
         : null;
       try {
+        // Cache-first: identical narration line + voice already generated
+        // anywhere → reuse the stored audio for free, skip the paid call.
+        const cached = await lookupCachedArtifact({
+          tool: "tts",
+          prompt: line,
+          model: "simba-3.2",
+          voice: voiceTone,
+        });
+        if (cached) {
+          const durationMs =
+            typeof cached.metadata.duration_ms === "number"
+              ? cached.metadata.duration_ms
+              : undefined;
+          store.updateScene(sceneId, {
+            voiceoverUrl: cached.url,
+            voiceProvider: "cache",
+            voiceLatencyMs: 0,
+            voiceCostUsd: 0,
+            voiceoverDurationMs: durationMs,
+            durationSeconds: Math.max(
+              1,
+              Math.ceil((durationMs ?? 4000) / 1000)
+            ),
+          });
+          await threadArtifactToSupabase({
+            url: cached.url,
+            projectSupabaseId: supabaseProjectId,
+            sceneSupabaseId: supabaseSceneId,
+            type: "audio",
+            mimeType: "audio/mpeg",
+            provider: "cache",
+            cacheInput: {
+              tool: "tts",
+              prompt: line,
+              model: "simba-3.2",
+              voice: voiceTone,
+            },
+            metadata: { cache_hit: true, cost_usd: 0, duration_ms: durationMs },
+          });
+          await threadToolRun({
+            projectSupabaseId: supabaseProjectId,
+            sceneSupabaseId: supabaseSceneId,
+            toolName: "text_to_speech",
+            agent: "voiceover",
+            status: "success",
+            input: { sceneId, line, voiceTone },
+            output: { url: cached.url, provider: "cache", cached: true },
+          });
+          store.setPhase("voiceover");
+          store.setAgentStatus(
+            "voiceover",
+            "active",
+            `Reused cached ${voiceTone} narration for scene ${scene.index} (free, cached).`
+          );
+          const cachedResult: any = textResult(
+            `Reused cached ${voiceTone} narration for scene ${scene.index} (no API cost).`
+          );
+          cachedResult._meta = { provider: "cache", costUsd: 0, latencyMs: 0, cacheHit: true };
+          return cachedResult;
+        }
+
         const data = await callGenerate(
           "/api/generate/text-to-speech",
           { text: line, voiceTone },
@@ -98,8 +160,6 @@ export function textToSpeechTool(store: Store): WebMCPTool<Input> {
           provider,
           cacheInput: {
             tool: "tts",
-            projectName: store.project.name,
-            sceneNumber: scene.index,
             prompt: line,
             model: data.model ?? "simba-3.2",
             voice: data.voice ?? voiceTone,

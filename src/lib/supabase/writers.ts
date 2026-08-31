@@ -249,6 +249,42 @@ export async function findCachedArtifact(
   }
 }
 
+/**
+ * Global content-cache lookup by cache key alone — no project scoping.
+ *
+ * The cache key is a hash of the *generation inputs* only (tool + prompt +
+ * size + model + voice + source artifact), so the same asset is reused across
+ * campaigns, scenes, and users. Tools call this BEFORE hitting a paid API: a
+ * hit returns the already-generated public URL for free; only a miss calls
+ * the provider.
+ *
+ * Best-effort — returns null on any error so a lookup failure falls through
+ * to a normal (paid) generation rather than breaking the pipeline.
+ */
+export async function findCachedArtifactByKey(cacheKey: string): Promise<{
+  id: number;
+  storage_key: string;
+  mime_type: string;
+  metadata: unknown;
+} | null> {
+  const supa = trySupabaseServiceClient();
+  if (!supa) return null;
+  try {
+    const { data, error } = await supa
+      .from("artifacts")
+      .select("id,storage_key,mime_type,metadata")
+      .eq("cache_key", cacheKey)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as { id: number; storage_key: string; mime_type: string; metadata: unknown };
+  } catch (err) {
+    console.warn("[supabase] findCachedArtifactByKey failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export async function recordGenerationJob(row: GenerationJobRow): Promise<number | null> {
   const supa = trySupabaseServiceClient();
   if (!supa) return null;
@@ -365,7 +401,7 @@ export async function persistArtifactWithMetadata(
   };
 }
 
-function r2PublicUrlFor(storageKey: string): string {
+export function r2PublicUrlFor(storageKey: string): string {
   const base = (process.env.R2_PUBLIC_URL ?? "").replace(/\/+$/, "");
   if (base) return `${base}/${storageKey}`;
   // Without a public URL we still return a public-looking path so the

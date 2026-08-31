@@ -41,8 +41,6 @@ function extractStorageKey(url: string): string {
 
 interface CacheKeyInput {
   tool: "image" | "tts" | "video";
-  projectName?: string;
-  sceneNumber?: number;
   prompt?: string;
   model?: string;
   duration?: number;
@@ -54,12 +52,17 @@ interface CacheKeyInput {
   inputArtifact?: string; // R2 key of the input image for i2v
 }
 
-/** Stable hash of the generation signature. Same inputs ⇒ same key. */
+/**
+ * Stable hash of the generation signature. Same generation inputs ⇒ same key.
+ *
+ * Deliberately CONTENT-ONLY (no projectName / sceneNumber): a given prompt +
+ * size + model + voice produces the same visual/audio wherever it's asked
+ * for, so identical assets are reused across campaigns, scenes, and users.
+ * This is what lets the cache skip a paid API call on a repeat request.
+ */
 function cacheKey(input: CacheKeyInput): string {
   const parts: Record<string, unknown> = {
     tool: input.tool,
-    project: input.projectName ?? "",
-    scene: input.sceneNumber ?? "",
     prompt: input.prompt ?? "",
     model: input.model ?? "",
     duration: input.duration ?? "",
@@ -178,3 +181,4 @@ export async function threadToolRun(args: {
 }
 
 export { extractStorageKey, cacheKey, PROJECT_PREFIX_RE };
+export type { CacheKeyInput };

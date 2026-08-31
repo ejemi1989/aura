@@ -4,6 +4,7 @@ import { textResult } from "@/lib/webmcp/toolResult";
 import { defineTool } from "@/lib/webmcp/defineTool";
 import { threadArtifactToSupabase, threadToolRun } from "@/lib/supabase/threading";
 import { upsertScene } from "@/lib/supabase/writers";
+import { lookupCachedArtifact } from "@/lib/supabase/cache";
 import {
   classifyError,
   recordIntrospection,
@@ -66,6 +67,61 @@ export function generateImageTool(store: Store): WebMCPTool<Input> {
           })
         : null;
       try {
+        // Cache-first: identical prompt + size + model already generated
+        // anywhere → reuse the stored asset for free, skip the paid call.
+        const cached = await lookupCachedArtifact({
+          tool: "image",
+          prompt,
+          model: "gpt-image-1",
+          size: "1536x1024",
+        });
+        if (cached) {
+          const provider = "cache";
+          const costUsd = 0;
+          store.updateScene(sceneId, {
+            imagePrompt: prompt,
+            imageUrl: cached.url,
+            imageProvider: provider,
+            imageLatencyMs: 0,
+            imageCostUsd: 0,
+          });
+          await threadArtifactToSupabase({
+            url: cached.url,
+            projectSupabaseId: supabaseProjectId,
+            sceneSupabaseId: supabaseSceneId,
+            type: "image",
+            mimeType: "image/png",
+            provider,
+            cacheInput: {
+              tool: "image",
+              prompt,
+              model: "gpt-image-1",
+              size: "1536x1024",
+            },
+            metadata: { cache_hit: true, cost_usd: costUsd },
+          });
+          await threadToolRun({
+            projectSupabaseId: supabaseProjectId,
+            sceneSupabaseId: supabaseSceneId,
+            toolName: "generate_image",
+            agent: "graphic-designer",
+            status: "success",
+            input: { sceneId, prompt },
+            output: { url: cached.url, provider, model: "gpt-image-1", cached: true },
+          });
+          store.setPhase("assets");
+          store.setAgentStatus(
+            "graphic-designer",
+            "active",
+            `Reused cached key visual for scene ${scene.index} (free, cached).`
+          );
+          const cachedResult: any = textResult(
+            `Reused cached key visual for scene ${scene.index} (no API cost).`
+          );
+          cachedResult._meta = { provider, costUsd, latencyMs: 0, cacheHit: true };
+          return cachedResult;
+        }
+
         const data = await callGenerate(
           "/api/generate/image",
           { prompt, size: "1536x1024" },
@@ -96,8 +152,6 @@ export function generateImageTool(store: Store): WebMCPTool<Input> {
           provider,
           cacheInput: {
             tool: "image",
-            projectName: store.project.name,
-            sceneNumber: scene.index,
             prompt,
             model: data.model ?? "gpt-image-1",
             size: "1536x1024",
