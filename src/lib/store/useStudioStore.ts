@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   AgentActivityEvent,
   AgentId,
@@ -107,8 +106,7 @@ interface StudioState {
 }
 
 export const useStudioStore = create<StudioState>()(
-  persist(
-    (set, get) => ({
+  (set, get) => ({
       project: emptyProject(),
       agentStatus: {
         "creative-director": "idle",
@@ -288,21 +286,5 @@ export const useStudioStore = create<StudioState>()(
           revisionRequest: null,
           ...(snap.project.id !== s.project.id ? { selectedSceneId: null, playheadSeconds: 0 } : {}),
         })),
-    }),
-    {
-      name: "creative-studio-state",
-      storage: createJSONStorage(() => localStorage),
-      // Persist the whole project plus activity/approvals so a refresh
-      // keeps the already-generated scenes instead of auto-running a fresh
-      // (and API-costly) generation from a blank session.
-      partialize: (s) => ({
-        project: s.project,
-        agentStatus: s.agentStatus,
-        activity: s.activity,
-        pendingApprovals: s.pendingApprovals,
-        toolCalls: s.toolCalls,
-        revisionRequest: s.revisionRequest,
-      }),
-    }
-  )
+  })
 );
