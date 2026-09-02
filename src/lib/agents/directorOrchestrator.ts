@@ -325,7 +325,7 @@ async function midPipelineApproval(brief: CreativeBrief & { name: string }): Pro
   );
   store.getState().pushDirectorMessage("director", `Checkpoint: ${summary}`);
 
-  const timeoutMs = Number(process.env.NEXT_PUBLIC_APPROVAL_TIMEOUT_MS ?? 6000);
+  const timeoutMs = Number(process.env.NEXT_PUBLIC_APPROVAL_TIMEOUT_MS ?? 4000);
   const humanPromise = waitForHumanDecision(approvalId);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const autoApprove = new Promise<boolean>((resolve) => {
@@ -496,6 +496,20 @@ async function runInParallel<T>(
   let firstError: string | null = null;
   let cursor = 0;
   const errors: string[] = [];
+  let completed = 0;
+  // Throttle activity-feed messages so a 3-scene batch doesn't spam one
+  // per completion — push at most every ~1.5s, plus the final completion.
+  let lastFeedAt = 0;
+  function reportProgress(force = false) {
+    const now = Date.now();
+    if (!force && now - lastFeedAt < 1500) return;
+    lastFeedAt = now;
+    const agentLabel = AGENTS[agentId].name;
+    store.getState().pushDirectorMessage(
+      "director",
+      `${agentLabel}: ${completed}/${scenes.length} scene(s) ready.`,
+    );
+  }
 
   async function worker(workerId: number) {
     while (true) {
@@ -504,11 +518,25 @@ async function runInParallel<T>(
       const scene = scenes[i];
       try {
         const res = await fn(scene);
+        completed++;
+        store.getState().setAgentStatus(
+          agentId,
+          "active",
+          `${completed}/${scenes.length} scene(s) done`,
+        );
+        reportProgress();
         if (/^Error|^No scene/i.test(res)) {
           errors.push(`scene ${scene.index}: ${res}`);
           if (!firstError) firstError = res;
         }
       } catch (err) {
+        completed++;
+        store.getState().setAgentStatus(
+          agentId,
+          "active",
+          `${completed}/${scenes.length} scene(s) done`,
+        );
+        reportProgress();
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`scene ${scene.index}: ${msg}`);
         if (!firstError) firstError = msg;
@@ -545,4 +573,5 @@ async function runInParallel<T>(
     throw new Error(summary);
   }
   store.getState().setAgentStatus(agentId, "completed", `Processed ${scenes.length} scene(s).`);
+  reportProgress(true);
 }

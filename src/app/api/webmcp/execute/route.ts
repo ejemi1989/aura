@@ -324,24 +324,47 @@ async function generateImage(input: Record<string, unknown>): Promise<unknown> {
   expectFields(input, ["sceneId"]);
   const sceneId = String(input.sceneId);
   const scene = await serverStore.findScene(sceneId);
-  if (!scene) throw new Error(`No scene with id "${sceneId}".`);
-  const prompt = (input.promptOverride as string) ?? scene.imagePrompt ?? scene.description;
+  // If `promptOverride` is provided, the caller (an external agent) is
+  // bringing its own prompt — skip the scene-store lookup so this call
+  // works across separate serverless instances (where the storyboard
+  // may have landed on a different warm instance than the image call).
+  // Without this guard, parallel image calls each fired as separate
+  // requests would each see an empty scene list and 404.
+  const promptOverride = input.promptOverride as string | undefined;
+  const prompt = promptOverride ?? scene?.imagePrompt ?? scene?.description;
+  if (!prompt) {
+    if (promptOverride) {
+      // Caller gave us a prompt but the scene doesn't exist — still
+      // produce the image using the prompt. We can't write back to the
+      // scene store (it doesn't have this id), so we just return the URL.
+      const t0 = Date.now();
+      const res = await callGenerate("/api/generate/image", { prompt, size: "1536x1024" });
+      const latencyMs = Date.now() - t0;
+      const provider: string = res.provider ?? "demo";
+      const costUsd = provider === "openai" ? 0.04 : 0;
+      return { message: `Image ready (external prompt).`, url: res.url, mode: res.mode, provider, meta: { provider, costUsd, latencyMs } };
+    }
+    throw new Error(`No scene with id "${sceneId}".`);
+  }
   const t0 = Date.now();
   const res = await callGenerate("/api/generate/image", { prompt, size: "1536x1024" });
   const latencyMs = Date.now() - t0;
   const provider: string = res.provider ?? "demo";
   const costUsd =
     provider === "openai" ? 0.04 : 0;
-  await serverStore.updateScene(sceneId, {
-    imagePrompt: prompt,
-    imageUrl: res.url,
-    imageProvider: provider,
-    imageLatencyMs: latencyMs,
-    imageCostUsd: costUsd,
-  });
+  if (scene) {
+    await serverStore.updateScene(sceneId, {
+      imagePrompt: prompt,
+      imageUrl: res.url,
+      imageProvider: provider,
+      imageLatencyMs: latencyMs,
+      imageCostUsd: costUsd,
+    });
+  }
   await serverStore.setPhase("assets");
-  await serverStore.setAgentStatus("graphic-designer", "active", `Generated key visual for scene ${scene.index} via ${provider}${costUsd ? ` ($${costUsd.toFixed(3)})` : ""}.`);
-  return { message: `Image ready for scene ${scene.index}.`, url: res.url, mode: res.mode, provider, meta: { provider, costUsd, latencyMs } };
+  const sceneIndex = scene?.index ?? "?";
+  await serverStore.setAgentStatus("graphic-designer", "active", `Generated key visual for scene ${sceneIndex} via ${provider}${costUsd ? ` ($${costUsd.toFixed(3)})` : ""}.`);
+  return { message: `Image ready for scene ${sceneIndex}.`, url: res.url, mode: res.mode, provider, meta: { provider, costUsd, latencyMs } };
 }
 
 const EDITABLE_SCENE_FIELDS = new Set([
