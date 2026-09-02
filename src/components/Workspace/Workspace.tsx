@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { VideoPreview } from "./VideoPreview";
 import { StoryboardGrid } from "./StoryboardGrid";
@@ -69,6 +69,13 @@ export function Workspace() {
   const [slideDir, setSlideDir] = useState<SlideDir>("forward");
   const playback = useSyncedPlayback();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Sliding active-title underline: positioned in the tablist's content space
+  // and kept glued to the active tab button. `sliderReady` disables the
+  // transition on first paint so the underline appears instead of gliding in.
+  const tablistRef = useRef<HTMLDivElement | null>(null);
+  const sliderReadyRef = useRef(false);
+  const [sliderReady, setSliderReady] = useState(false);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
     storyboard: null,
     script: null,
@@ -261,6 +268,53 @@ export function Workspace() {
     };
   }, [tab, goToTab, directionFor, commitSwipe]);
 
+  // ── Sliding tab-title underline + overflow scroll ───────────────────────
+  // On every tab change (arrow click, tab click, keyboard, swipe) we measure
+  // the newly active tab button, position the underline under its title, and
+  // slide the strip horizontally so the title is fully visible when the tabs
+  // overflow the narrow panel. `getBoundingClientRect` is viewport-relative,
+  // so the position is offset by scrollLeft to land in content space — that
+  // keeps the underline glued to the button as the strip scrolls.
+
+  const measureActiveTab = useCallback(() => {
+    const list = tablistRef.current;
+    const btn = tabRefs.current[tab];
+    if (!list || !btn) return;
+    const listRect = list.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    // Inset 8px each side to match the tab button's `px-3` visual padding.
+    setIndicator({
+      left: btnRect.left - listRect.left + list.scrollLeft + 8,
+      width: Math.max(btnRect.width - 16, 8),
+    });
+    // Reveal the title if it's clipped off either edge of the strip.
+    const offRight = btnRect.right - listRect.right;
+    const offLeft = listRect.left - btnRect.left;
+    if (offLeft > 0 || offRight > 0) {
+      const target = list.scrollLeft + (offRight > 0 ? offRight : -offLeft);
+      list.scrollTo({ left: target, behavior: sliderReadyRef.current ? "smooth" : "auto" });
+    }
+  }, [tab]);
+
+  useLayoutEffect(() => {
+    measureActiveTab();
+  }, [measureActiveTab]);
+
+  // Arm the transition after the first paint so the underline appears seated
+  // under the initial tab instead of sliding in from nowhere.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      sliderReadyRef.current = true;
+      setSliderReady(true);
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("resize", measureActiveTab);
+    return () => window.removeEventListener("resize", measureActiveTab);
+  }, [measureActiveTab]);
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3 lg:p-4">
       {/* Side-by-side on lg+: preview (with transport) | splitter | tab panel */}
@@ -305,10 +359,11 @@ export function Workspace() {
         {/* Right column: tabbed panel. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-studio border border-border bg-card shadow-studio-sm">
           <div
+            ref={tablistRef}
             role="tablist"
             aria-label="Workspace tabs"
             onKeyDown={onTabKeyDown}
-            className="flex h-10 shrink-0 items-center gap-0.5 border-b border-border bg-card px-2"
+            className="relative flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-card px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             <button
               type="button"
@@ -351,7 +406,7 @@ export function Workspace() {
                   tabIndex={active ? 0 : -1}
                   onClick={() => goToTab(t.id, directionFor(tab, t.id))}
                   className={clsx(
-                    "relative flex h-9 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors active:scale-[0.97]",
+                    "relative flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors active:scale-[0.97]",
                     active
                       ? "text-foreground"
                       : "text-muted-foreground hover:bg-background hover:text-foreground"
@@ -366,15 +421,26 @@ export function Workspace() {
                     )}
                   />
                   {t.label}
-                  <span
-                    className={clsx(
-                      "absolute inset-x-2 -bottom-px h-0.5 rounded-full transition-colors",
-                      active ? "bg-primary" : "bg-transparent"
-                    )}
-                  />
                 </button>
               );
             })}
+            {/* Sliding active-title underline. Glides to the newly active tab's
+                title on arrow/tab click, keyboard, or swipe, and stays glued to
+                the button as the strip scrolls when tabs overflow. */}
+            <span
+              aria-hidden="true"
+              className={clsx(
+                "pointer-events-none absolute bottom-px h-0.5 rounded-full bg-primary",
+                sliderReady
+                  ? "transition-[left,width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "transition-none"
+              )}
+              style={
+                indicator
+                  ? { left: `${indicator.left}px`, width: `${indicator.width}px` }
+                  : undefined
+              }
+            />
           </div>
           <div
             key={slideKey}
@@ -414,19 +480,19 @@ export function Workspace() {
           are untouched, so the panel never flashes. */}
       <style jsx global>{`
         @keyframes workspace-tab-in-forward {
-          from { transform: translate3d(12px, 0, 0); opacity: 0.6; }
+          from { transform: translate3d(48px, 0, 0); opacity: 0; }
           to   { transform: translate3d(0,    0, 0); opacity: 1; }
         }
         @keyframes workspace-tab-in-back {
-          from { transform: translate3d(-12px, 0, 0); opacity: 0.6; }
+          from { transform: translate3d(-48px, 0, 0); opacity: 0; }
           to   { transform: translate3d(0,     0, 0); opacity: 1; }
         }
         .anim-tab-in-forward {
-          animation: workspace-tab-in-forward 220ms cubic-bezier(0.2, 0, 0, 1);
+          animation: workspace-tab-in-forward 320ms cubic-bezier(0.16, 1, 0.3, 1);
           will-change: transform, opacity;
         }
         .anim-tab-in-back {
-          animation: workspace-tab-in-back 220ms cubic-bezier(0.2, 0, 0, 1);
+          animation: workspace-tab-in-back 320ms cubic-bezier(0.16, 1, 0.3, 1);
           will-change: transform, opacity;
         }
       `}</style>
