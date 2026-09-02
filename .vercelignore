@@ -1,0 +1,16 @@
+# Keep real provider credentials out of Vercel builds.
+# The live deployment must run in keyless demo mode (judge-safe).
+.env
+.env.local
+.env.production
+.env*.local
+
+# Local-only state + artifacts.
+.studio-state.json
+scripts/verify/.studio-state.json
+public/assets/generated
+
+# Node / build caches (Vercel rebuilds these).
+node_modules
+.next
+.vercel

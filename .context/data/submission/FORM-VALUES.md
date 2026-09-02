@@ -118,10 +118,14 @@ Two of the three Devpost artifacts are already in place; one remains.
 ### 1. Working live URL — DONE
 The studio is deployed and verified on **Vercel**:
 `https://creative-studio-eight-vert.vercel.app`. No environment variables
-are set on the deployment — the demo runs end-to-end in zero-key mode,
-and the full pipeline (create → script → storyboard → image → motion →
+are set on the deployment **and `.env*` is excluded from Vercel builds**
+(via `.vercelignore`) so local provider keys can never reach the live
+URL — the demo runs end-to-end in zero-key mode with nothing billable.
+The full pipeline (create → script → storyboard → image → motion →
 voice → captions → compose → review → human-gate) was re-verified
-against the live URL. Redeploy anytime with `vercel deploy --prod`.
+against the live URL end-to-end (phase=review, qaVerdict=APPROVED, all
+assets delivered as inline `data:` URLs). Redeploy anytime with
+`vercel deploy --prod`.
 
 ### 2. Public code repository — DONE
 Public repo: **https://github.com/ejemi1989/aura** (branch `main`,

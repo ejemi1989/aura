@@ -10,7 +10,9 @@ cover everything.
 
 **Primary path — deployed live URL (no install, no local server):**
 Open **https://creative-studio-eight-vert.vercel.app** in Chrome. The
-studio is deployed with **zero environment variables** — demo mode is
+studio is deployed with **zero environment variables** (and `.env*` is
+excluded from Vercel builds via `.vercelignore`, so local keys can't
+leak) — demo mode is
 baked in, so everything below works exactly the same as on the demo
 box. (Optional: reset server state with
 `curl -X DELETE https://creative-studio-eight-vert.vercel.app/api/webmcp/execute`.)

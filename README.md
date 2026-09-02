@@ -147,8 +147,11 @@ and writes live state.
 ## Deployed demo (zero credentials, serverless-safe)
 
 The live submission URL — **https://creative-studio-eight-vert.vercel.app** —
-is intentionally deployed with **no environment variables set**. Every
-provider key, R2 bucket, and Supabase credential is absent. The demo
+is intentionally deployed with **no environment variables set** and with
+`.env*` explicitly excluded from Vercel builds via `.vercelignore`, so
+local provider keys can never leak into the deployment or bill a real
+provider. Every provider key, R2 bucket, and Supabase credential is
+absent. The demo
 still runs end-to-end because:
 
 - **Demo-mode generation is fully self-contained.** When no provider key
