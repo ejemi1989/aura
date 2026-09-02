@@ -89,8 +89,19 @@ const localDiskStore: AssetStore = {
     const key = buildKey(options.prefix, options.ext, options.pathPrefix);
     const fullPath = path.join(process.cwd(), "public", "assets", key);
     const dir = path.dirname(fullPath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(fullPath, data);
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(fullPath, data);
+    } catch (err) {
+      // Read-only serverless filesystem (e.g. Vercel): fall back to an
+      // inline data: URL so live providers still deliver the asset to the
+      // browser instead of failing with EROFS. The browser renders data:
+      // URLs natively for <img>/<audio>, and the video preview already
+      // treats data:image/... as a still.
+      const base64 = data.toString("base64");
+      const ct = options.contentType || guessContentType(options.ext);
+      return `data:${ct};base64,${base64}`;
+    }
     return `/assets/${key}`;
   },
   async mirror(url, options) {
