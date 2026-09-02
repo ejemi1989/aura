@@ -26,15 +26,16 @@ export interface SpeechifyTtsResult {
   durationMs?: number;
 }
 
-// Map the studio's creative voice tones onto Speechify's stock voice ids.
-// These are Simba 3 (`_32`) English voices. Pin a specific voice per-voice
-// with SPEECHIFY_VOICE when you have a preferred id.
+// Map the studio's creative voice tones onto Speechify voice ids that are
+// available on the shared plan (verified against GET /v1/voices for the
+// default workspace). These English voices all use Simba 3.0. Pin a
+// specific voice per-voice with SPEECHIFY_VOICE when you have a preferred id.
 const VOICE_MAP: Record<string, string> = {
-  warm: "sarah_32",
-  energetic: "george_32",
-  authoritative: "geffen_32",
-  calm: "beatrice_32",
-  playful: "henri_32",
+  warm: "alicia",
+  energetic: "alec",
+  authoritative: "alton",
+  calm: "alfonso",
+  playful: "amon",
 };
 
 let cached: SpeechifyClient | null = null;
@@ -71,11 +72,11 @@ export async function speechifyTTS(
     process.env.SPEECHIFY_VOICE ||
     process.env.SPEECHIFY_TTS_VOICE ||
     VOICE_MAP[tone] ||
-    "george_32";
+    "alicia";
   // The SDK types `model` as a literal union. `SPEECHIFY_MODEL` lets the
   // operator switch models (e.g. simba-3.0 for multilingual) without a code
   // change, so we cast the resolved string to the SDK's model type.
-  const model = (process.env.SPEECHIFY_MODEL || "simba-3.2") as
+  const model = (process.env.SPEECHIFY_MODEL || "simba-3.0") as
     | "simba-3.0"
     | "simba-3.2"
     | "simba-english"
