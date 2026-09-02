@@ -47,6 +47,21 @@ export function textToSpeechTool(store: Store): WebMCPTool<Input> {
     execute: async ({ sceneId, line, voiceTone }, options) => {
       const scene = store.project.scenes.find((s) => s.id === sceneId);
       if (!scene) return textResult(`No scene with id "${sceneId}".`);
+      // No-repeat guard: never let two scenes share the exact same narration
+      // line. If another scene already voiced this line (or already has this
+      // line as its scripted VO), the audio would be a literal duplicate —
+      // which reads as broken/repetitive narration in the final cut. Fail
+      // loudly and skew the line rather than silently repeating the audio.
+      const duplicate = store.project.scenes.find(
+        (s) =>
+          s.id !== sceneId &&
+          ((s as { voiceoverLine?: string }).voiceoverLine ?? s.description) === line
+      );
+      if (duplicate) {
+        const agentMsg = `Scene ${scene.index} duplicates the narration of scene ${duplicate.index} ("${line}"). Change the script line so every scene speaks something distinct, or re-run generate_script for unique VO.`;
+        store.setAgentStatus("voiceover", "error", agentMsg);
+        return textResult(agentMsg);
+      }
       const t0 = Date.now();
       const supabaseProjectId = store.project.supabaseProjectId;
       const supabaseSceneId = supabaseProjectId

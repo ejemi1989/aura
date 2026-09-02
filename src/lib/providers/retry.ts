@@ -15,10 +15,38 @@ export interface RetryOptions {
   maxMs?: number;
 }
 
+/**
+ * True when an error represents a PERMANENT account/balance failure that
+ * retrying will never fix — retrying it just burns wall-clock (exponential
+ * backoff) before the caller falls back to demo. Distinct from a true
+ * transient 429 rate-limit, which IS worth retrying.
+ */
+export function isPermanentAccountFailure(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const msg =
+    (err as any)?.message ??
+    (err as any)?.response_data?.message ??
+    (err as any)?.error?.message ??
+    "";
+  const status = (err as any)?.status ?? (err as any)?.response?.status;
+  if (typeof status === "number" && status === 429) {
+    // A 429 that the provider explicitly labels as out-of-credits / an
+    // exhausted or locked account is permanent — keep the retry for plain
+    // rate-limit 429s.
+    return /out of credits|no credits|credits remaining|insufficient balance|billing|locked|exhausted|spend cap|quota not available|PAYMENT_REQUIRED/i.test(
+      String(msg)
+    );
+  }
+  return false;
+}
+
 /** True when an error is worth retrying (rate limit, 5xx, network). */
 export function isRetryable(err: unknown): boolean {
   if (err instanceof Error && err.name === "AbortError") return false;
   if (err instanceof Error && /aborted/i.test(err.message)) return false;
+  // Permanent account failures (out of credits, locked) will never succeed
+  // on retry — fail fast so we reach the demo fallback immediately.
+  if (isPermanentAccountFailure(err)) return false;
   if (typeof (err as any)?.status === "number") {
     const status = (err as any).status as number;
     return status === 429 || status >= 500;

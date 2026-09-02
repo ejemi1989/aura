@@ -121,22 +121,46 @@ async function composeWithFfmpeg(scenes: SceneInput[], transition: NonNullable<R
   const id = `composed_${Date.now()}_${randomBytes(3).toString("hex")}`;
   const outPath = join(dir, `${id}.mp4`);
 
-  // Download each clip locally so ffmpeg can read it from disk (handles
-  // /assets/... and remote URLs uniformly).
+  // Scene slot durations: each scene plays for its real duration (TTS sets
+  // this to the narration length so audio and video stay in sync). Defaults
+  // to 4s for scenes without an explicit duration.
+  const durations = scenes.map((s) => Math.max(1, s.durationSeconds ?? 4));
+  const crossfadeDur = 0.5; // 500ms transitions
+  // Cumulative start time (in the final timeline) of each scene's video,
+  // accounting for the crossfade overlap with the previous scene.
+  const starts: number[] = [];
+  let acc = 0;
+  for (let i = 0; i < scenes.length; i++) {
+    starts.push(acc);
+    acc += durations[i] - (i < scenes.length - 1 ? crossfadeDur : 0);
+  }
+  const totalDuration = acc;
+
+  // Download each clip (and its narration) locally so ffmpeg can read them
+  // from disk uniformly regardless of /assets/ or remote URLs.
   const inputs: string[] = [];
+  const voiceInputs: (string | null)[] = [];
   for (let i = 0; i < scenes.length; i++) {
     const s = scenes[i];
     const local = await downloadToLocal(s.videoUrl, `${id}_in${i}.mp4`);
     inputs.push(local);
+    let vo: string | null = null;
+    if (s.voiceoverUrl) {
+      try {
+        vo = await downloadToLocal(s.voiceoverUrl, `${id}_vo${i}.mp3`);
+      } catch {
+        vo = null; // narration missing/invalid — build without it
+      }
+    }
+    voiceInputs.push(vo);
   }
 
-  // Build the ffmpeg filter graph. Concat-demuxer is the safest approach
-  // for same-codec clips; we re-encode to a uniform 1280x720@30fps mp4 so
-  // the output plays in any browser. Transitions beyond `cut` use the
-  // xfade filter (ffmpeg 4.3+).
+  // Narration/voiceover indexes in the input list (videos come first).
+  const voParamIndex = (i: number) => inputs.length + i;
+
   const useCrossfade = transition !== "cut" && scenes.length >= 2;
   if (!useCrossfade) {
-    // Simple concat via demuxer
+    // Simple concat via demuxer.
     const listPath = join(dir, `${id}_list.txt`);
     const listBody = inputs.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
     await writeFile(listPath, listBody);
@@ -145,42 +169,72 @@ async function composeWithFfmpeg(scenes: SceneInput[], transition: NonNullable<R
       ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath],
       { timeout: 120_000 }
     );
-  } else {
-    // xfade filter for cross-fade-style transitions.
-    const xfType = XFADE[transition];
-    const dur = 0.5; // 500ms transitions
-    let filter = "";
-    let lastLabel = "[0:v]";
-    for (let i = 1; i < inputs.length; i++) {
-      const offset = i * 4 - dur; // each scene 4s
-      const out = i === inputs.length - 1 ? "[v]" : `[v${i}]`;
-      filter += `${lastLabel}[${i}:v]xfade=transition=${xfType}:duration=${dur}:offset=${offset}${out};`;
-      lastLabel = out;
-    }
-    const aFilter = inputs.map((_, i) => `[${i}:a]`).join("") + `concat=n=${inputs.length}:v=0:a=1[a]`;
-    const filterComplex = filter + aFilter;
-
-    await exec(
-      "ffmpeg",
-      [
-        "-y",
-        ...inputs.flatMap((p) => ["-i", p]),
-        "-filter_complex", filterComplex,
-        "-map", "[v]",
-        "-map", "[a]",
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
-        "-r", "30",
-        "-s", "1280x720",
-        outPath,
-      ],
-      { timeout: 120_000 }
-    );
+    return `/assets/${id}.mp4`;
   }
+
+  // xfade the video tracks using each scene's real start time so the visual
+  // timeline matches the durations the narration set.
+  const xfType = XFADE[transition];
+  let filter = "";
+  let lastLabel = "[0:v]";
+  for (let i = 1; i < scenes.length; i++) {
+    const offset = starts[i];
+    const out = i === scenes.length - 1 ? "[vid]" : `[v${i}]`;
+    filter += `${lastLabel}[${i}:v]xfade=transition=${xfType}:duration=${crossfadeDur}:offset=${offset}${out};`;
+    lastLabel = out;
+  }
+  if (scenes.length === 1) {
+    filter = `[0:v]null[vid];`;
+  }
+
+  // Audio: mix every scene's narration at its own start time with adelay,
+  // so voiceover lands exactly when its scene begins and nothing repeats or
+  // drifts. When a scene has no narration, it stays silent rather than
+  // pulling a stale audio track out of sync.
+  const voiceLanes: string[] = [];
+  for (let i = 0; i < scenes.length; i++) {
+    if (voiceInputs[i]) {
+      const delayMs = Math.round(starts[i] * 1000);
+      filter += `[${voParamIndex(i)}:a]aresample=44100,adelay=${delayMs}|${delayMs}[vo${i}];`;
+      voiceLanes.push(`[vo${i}]`);
+    }
+  }
+  const amixLabel = voiceLanes.length > 0 ? "[aud]" : "[sil]";
+  if (voiceLanes.length > 0) {
+    filter += `${voiceLanes.join("")}amix=inputs=${voiceLanes.length}:normalize=0:duration=longest${amixLabel};`;
+  } else {
+    // No narration for any scene — keep each clip's own audio but delay it
+    // to its scene start so tracks stay time-aligned with the visuals
+    // instead of all overlapping at t=0.
+    const clipLanes: string[] = [];
+    for (let i = 0; i < scenes.length; i++) {
+      const delayMs = Math.round(starts[i] * 1000);
+      filter += `[${i}:a]aresample=44100,adelay=${delayMs}|${delayMs}[c${i}];`;
+      clipLanes.push(`[c${i}]`);
+    }
+    filter += `${clipLanes.join("")}amix=inputs=${clipLanes.length}:normalize=0:duration=longest${amixLabel};`;
+  }
+
+  const ffArgs = [
+    "-y",
+    ...inputs.flatMap((p) => ["-i", p]),
+    ...voiceInputs.filter(Boolean).flatMap((p) => ["-i", p as string]),
+    "-filter_complex", filter,
+    "-map", "[vid]",
+    "-map", amixLabel,
+    "-c:v", "libx264",
+    "-preset", "fast",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-movflags", "+faststart",
+    "-r", "30",
+    "-s", "1280x720",
+    "-t", String(totalDuration),
+    outPath,
+  ];
+
+  await exec("ffmpeg", ffArgs, { timeout: 120_000 });
 
   // Best-effort cleanup of the intermediate inputs; if it fails, the next
   // build will overwrite them anyway.
