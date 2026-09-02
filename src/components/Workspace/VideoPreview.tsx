@@ -67,6 +67,13 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
   const [motionGraphicsEnabled, setMotionGraphicsEnabled] = useState(true);
   const [composedFailed, setComposedFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Scene-by-scene video ref. Pulled out of the inline ref callback so we
+  // can run a one-shot drift-based sync (not a constant currentTime write
+  // every render). The previous inline ref created a fresh closure on every
+  // render, which React treats as a new ref identity → detach + re-attach
+  // per render → the scene video was being constantly seeked, which read
+  // as the video not playing in sync with the audio.
+  const sceneVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const isManifest = project.composedVideoUrl === "__manifest__";
   const hasComposedVideo =
@@ -101,6 +108,46 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
       }
     }
   }, [playhead, hasComposedVideo]);
+
+  // Scene-by-scene video sync. Drift-based: only seek when the scene
+  // video is more than 0.2s ahead or behind the audio-driven playhead.
+  // The previous inline ref callback set currentTime every render, which
+  // (combined with React's detach + re-attach on each new closure) kept
+  // the scene video permanently yanked around — it never played at
+  // natural speed, which read as "video not in sync with audio".
+  useEffect(() => {
+    const v = sceneVideoRef.current;
+    if (!v || !currentScene) return;
+    const intra = playhead - sceneStartForCurrent(currentScene, project.scenes);
+    const dur = v.duration || currentScene.durationSeconds || 0;
+    if (dur > 0 && Math.abs(v.currentTime - intra) > 0.2) {
+      try {
+        v.currentTime = Math.max(0, Math.min(dur, intra));
+      } catch {
+        /* before metadata */
+      }
+    }
+    if (isPlaying && v.paused) void v.play().catch(() => {});
+    if (!isPlaying && !v.paused) v.pause();
+  }, [playhead, currentScene, project.scenes, isPlaying]);
+
+  // When the scene flips (currentScene changes), reset the scene video
+  // to the start of its slot so the visual matches the audio's natural
+  // restart on scene change. Without this, the new scene's video carries
+  // over the previous scene's currentTime and starts mid-clip.
+  useEffect(() => {
+    const v = sceneVideoRef.current;
+    if (!v || !currentScene) return;
+    try {
+      const intra = playhead - sceneStartForCurrent(currentScene, project.scenes);
+      v.currentTime = Math.max(0, intra);
+    } catch {
+      /* before metadata */
+    }
+    // We deliberately depend only on currentScene?.id — re-seek-on-every-
+    // playhead-tick is what the drift-sync effect handles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScene?.id]);
 
   function handlePlayPause() {
     if (hasComposedVideo && videoRef.current) {
@@ -281,20 +328,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
                     muted={isPlaying}
                     playsInline
                     onError={(e) => { e.currentTarget.style.display = "none"; }}
-                    ref={(el) => {
-                      // Drive currentTime from the shared playhead so the
-                      // video stays in sync with the voiceover.
-                      if (!el) return;
-                      const intra = playhead - sceneStartForCurrent(currentScene, project.scenes);
-                      const dur = el.duration || currentScene.durationSeconds || 0;
-                      if (dur > 0 && Math.abs(el.currentTime - intra) > 0.25) {
-                        try {
-                          el.currentTime = Math.max(0, Math.min(dur, intra));
-                        } catch {}
-                      }
-                      if (isPlaying && el.paused) void el.play().catch(() => {});
-                      if (!isPlaying && !el.paused) el.pause();
-                    }}
+                    ref={sceneVideoRef}
                   />
                 ) : !motionGraphicsEnabled && currentScene.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element

@@ -10,6 +10,7 @@ import { TimelineView } from "./TimelineView";
 import { TimelineStrip } from "./TimelineStrip";
 import { GridIcon, DocIcon, WaveIcon, BarsIcon } from "@/components/icons/UIIcons";
 import { useSyncedPlayback } from "@/lib/hooks/useSyncedPlayback";
+import { useStudioStore } from "@/lib/store/useStudioStore";
 
 type TabId = "storyboard" | "script" | "audio" | "timeline";
 
@@ -67,7 +68,13 @@ export function Workspace() {
   const [dragging, setDragging] = useState(false);
   const [slideKey, setSlideKey] = useState(0);
   const [slideDir, setSlideDir] = useState<SlideDir>("forward");
-  const playback = useSyncedPlayback();
+  const project = useStudioStore((s) => s.project);
+  const hasComposedVideo = !!project.composedVideoUrl && project.composedVideoUrl !== "__manifest__";
+  // When a composed MP4 is the playback source, the video carries its own
+  // muxed narration — mute the standalone Speechify <audio> element so
+  // the user doesn't hear the voiceover twice (which read as "video not
+  // in sync with audio").
+  const playback = useSyncedPlayback({ narrationMuted: hasComposedVideo });
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Sliding active-title underline: positioned in the tablist's content space
   // and kept glued to the active tab button. `sliderReady` disables the

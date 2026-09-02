@@ -63,9 +63,17 @@ export type SyncedPlayback = {
   nextScene: () => void;
   voiceoverCurrentTime: number; // 0..voiceover.duration — UI uses this for "now speaking" indicator
   voiceoverDuration: number;    // voiceover.duration — total clip length for currently playing row
+  /**
+   * When true, the standalone <audio> narration element is muted — the host
+   * (e.g. a composed <video> mp4) carries its own muxed audio and the extra
+   * live-clip playback would create a doubled, slightly-offset voiceover
+   * that reads as "audio not in sync with video". UI consumers that own the
+   * audio (the composed MP4 path) set this true.
+   */
+  narrationMuted: boolean;
 };
 
-export function useSyncedPlayback(): SyncedPlayback {
+export function useSyncedPlayback(options?: { narrationMuted?: boolean }): SyncedPlayback {
   const scenes = useStudioStore((s) => s.project.scenes);
   const isPlaying = useStudioStore((s) => s.isPlaying);
   const playhead = useStudioStore((s) => s.playheadSeconds);
@@ -231,8 +239,14 @@ export function useSyncedPlayback(): SyncedPlayback {
   // Pass 37: cap the playhead write at the current scene's audio end
   // so a voiceover that's longer than its slot can't push the playhead
   // into the next scene's range and trigger a remount mid-clip.
+  //
+  // When the host carries its own audio (e.g. the composed MP4) the
+  // standalone <audio> is muted — its currentTime would fight the host's
+  // onTimeUpdate for the playhead, causing micro-stutter on every frame.
+  // In that mode, the host owns the clock and we skip the rAF entirely.
   useEffect(() => {
     if (!isPlaying) return;
+    if (options?.narrationMuted) return; // host owns the clock
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -294,7 +308,7 @@ export function useSyncedPlayback(): SyncedPlayback {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [isPlaying, currentSceneStart, setPlayhead, setIsPlaying, totalDuration, currentScene, scenes, audioDurations]);
+  }, [isPlaying, currentSceneStart, setPlayhead, setIsPlaying, totalDuration, currentScene, scenes, audioDurations, options?.narrationMuted]);
 
   // When the voiceover clip finishes naturally, advance to the next
   // scene so the next narration plays back-to-back. This makes the
@@ -304,7 +318,12 @@ export function useSyncedPlayback(): SyncedPlayback {
   // Pass 37: jump to the next scene's audio start (in real audio
   // seconds), not the slot-based start. This is what keeps the chain
   // tight when a voiceover is longer than its slot.
+  //
+  // When narration is muted (host owns the audio, e.g. composed MP4),
+  // ignore this — the host's own `ended` handler stops playback and the
+  // scene-by-scene advance would race the host's clock.
   const handleVoiceoverEnded = useCallback(() => {
+    if (options?.narrationMuted) return;
     const state = useStudioStore.getState();
     const idx = state.project.scenes.findIndex((s) => s.id === currentSceneId);
     if (idx < 0) return;
@@ -321,7 +340,7 @@ export function useSyncedPlayback(): SyncedPlayback {
     }
     setPlayhead(audioStartTimes[idx + 1]);
     setVoiceoverTime({ t: 0, d: 0 });
-  }, [currentSceneId, audioStartTimes, setIsPlaying, setPlayhead]);
+  }, [currentSceneId, audioStartTimes, setIsPlaying, setPlayhead, options?.narrationMuted]);
 
   // Callback ref attached to the voiceover <audio>. Runs SYNCHRONOUSLY
   // during render commit so the play() call inherits the sticky
@@ -336,7 +355,12 @@ export function useSyncedPlayback(): SyncedPlayback {
     (el: HTMLAudioElement | null) => {
       audioRef.current = el;
       if (!el) return;
-      el.muted = false;
+      // When the host (e.g. composed MP4) is providing its own muxed audio,
+      // mute this standalone clip so the user doesn't hear the narration
+      // twice — the doubled playback was the source of "video not in sync
+      // with audio" reports. The clip is still loaded (so onEnded /
+      // currentTime stay accurate for timeline navigation), just inaudible.
+      el.muted = !!options?.narrationMuted;
       el.volume = 1;
       const freshMount = mountedSceneIdRef.current !== currentSceneId;
       if (freshMount) {
@@ -496,5 +520,6 @@ export function useSyncedPlayback(): SyncedPlayback {
     nextScene,
     voiceoverCurrentTime: voiceoverTime.t,
     voiceoverDuration: voiceoverTime.d,
+    narrationMuted: !!options?.narrationMuted,
   };
 }
