@@ -100,7 +100,7 @@ both humans and agents the same structured levers to actuate it.
 
 Implementation, top to bottom:
 
-**Tool registry.** `src/lib/webmcp/tools/` — 14 files, one per tool.
+**Tool registry.** `src/lib/webmcp/tools/` — 16 files, one per tool.
 Each tool is a small factory that reads and writes the same Zustand
 store the in-app Creative Director uses, so in-app and agent paths
 share state. Every tool returns `{ content: [{ type: "text", text: ...

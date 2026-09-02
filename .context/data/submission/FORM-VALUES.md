@@ -61,7 +61,7 @@ Chrome's built-in agent drive the studio the same way a Creative
 Director would.
 
 ### 4. Briefly explain how you implemented WebMCP
-- **Tool registry** in `src/lib/webmcp/tools/` — 14 files, one per
+- **Tool registry** in `src/lib/webmcp/tools/` — 16 files, one per
   tool, all factories over the same Zustand store.
 - **Browser registration** in `src/hooks/useWebMCP.ts`:
   `await modelContext.registerTool(wrapped, { signal })` with the

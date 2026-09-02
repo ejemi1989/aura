@@ -80,7 +80,7 @@ over HTTP:
 
 - **`GET /api/webmcp/tools`** — returns the full catalog with
   names, descriptions, owners, and JSON Schemas. A judge can
-  `curl` this and see all 14 entries.
+  `curl` this and see all 16 entries.
 - **`POST /api/webmcp/execute`** — invokes a single tool by name
   with JSON args, returns `{ ok, result, error }`. State is
   persisted to `.studio-state.json` so multi-step pipelines work
