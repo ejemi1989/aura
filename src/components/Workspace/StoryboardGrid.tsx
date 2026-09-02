@@ -1,7 +1,50 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useStudioStore } from "@/lib/store/useStudioStore";
 import { Badge } from "@/components/common/Badge";
+
+/**
+ * Image element with a one-shot fade-in. A gpt-image-1 PNG data URL is
+ * ~3MB — without an explicit loading state, a judge staring at the
+ * Storyboard sees a blank card for a beat while the browser decodes the
+ * payload, and reads it as "image didn't generate". The skeleton + fade
+ * makes the arrival unambiguous.
+ */
+function SceneImage({ src, alt }: { sceneId: string; src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  // Reset loaded state when src changes (different image arrived).
+  useEffect(() => {
+    setLoaded(false);
+  }, [src]);
+  return (
+    <>
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Loading visual…
+          </span>
+        </div>
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        // object-contain keeps the FULL image visible — the image
+        // is gpt-image-1 1536×1024 (3:2) which is taller than the
+        // 16:9 aspect-video card, so object-cover would crop the
+        // top and bottom. Contain letterboxes vertically so the
+        // entire scene visual is preserved.
+        className={
+          "h-full w-full object-contain ring-1 ring-inset ring-black/10 dark:ring-white/10 transition-opacity duration-300 " +
+          (loaded ? "opacity-100" : "opacity-0")
+        }
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+      />
+    </>
+  );
+}
 
 /**
  * Tiny "Generated via X · Ys · $Z" badge shown on each artifact card
@@ -40,6 +83,31 @@ function ProvenanceBadge({
 
 export function StoryboardGrid() {
   const scenes = useStudioStore((s) => s.project.scenes);
+  // Track which scene just received an imageUrl so the card can flash a
+  // brief "just landed" highlight. Without this, a judge watching the
+  // activity feed sees "Graphic Designer: Generated key visual for scene 1"
+  // but can't tell whether the image is on screen — the highlight makes
+  // the visual arrival unmistakable. Clears after ~2s.
+  const [justLanded, setJustLanded] = useState<string | null>(null);
+  const prevUrlsRef = useRef<Record<string, string | undefined>>({});
+  useEffect(() => {
+    let changed: string | null = null;
+    for (const s of scenes) {
+      const prev = prevUrlsRef.current[s.id];
+      if (s.imageUrl && s.imageUrl !== prev) {
+        changed = s.id;
+        break;
+      }
+    }
+    // Update the ref map for next render regardless of whether anything changed.
+    const next: Record<string, string | undefined> = {};
+    for (const s of scenes) next[s.id] = s.imageUrl;
+    prevUrlsRef.current = next;
+    if (!changed) return;
+    setJustLanded(changed);
+    const t = setTimeout(() => setJustLanded(null), 2000);
+    return () => clearTimeout(t);
+  }, [scenes]);
 
   if (scenes.length === 0) {
     return (
@@ -58,16 +126,10 @@ export function StoryboardGrid() {
         >
           <div className="relative flex aspect-video items-center justify-center bg-background">
             {scene.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <SceneImage
+                sceneId={scene.id}
                 src={scene.imageUrl}
                 alt={scene.voiceoverLine ?? scene.description}
-                // object-contain keeps the FULL image visible — the image
-                // is gpt-image-1 1536×1024 (3:2) which is taller than the
-                // 16:9 aspect-video card, so object-cover would crop the
-                // top and bottom. Contain letterboxes vertically so the
-                // entire scene visual is preserved.
-                className="h-full w-full object-contain ring-1 ring-inset ring-black/10 dark:ring-white/10"
               />
             ) : (
               <span className="text-[11px] text-muted-foreground">No visual yet</span>
@@ -81,6 +143,12 @@ export function StoryboardGrid() {
                   label={`Scene ${scene.index} visual`}
                 />
               </div>
+            )}
+            {scene.imageUrl && justLanded === scene.id && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 animate-[pulse_0.6s_ease-out_1] rounded-studio ring-2 ring-primary"
+              />
             )}
           </div>
           <div className="p-2.5">
