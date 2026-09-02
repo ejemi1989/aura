@@ -82,6 +82,22 @@ extra lane for agents, never the only lane.
    to `.studio-state.json` so multi-step pipelines work across requests
    (in-memory per instance when the filesystem is read-only, e.g. Vercel).
 
+## Tested with
+
+WebMCP tool surface verified end-to-end on:
+
+| Client | Status | Notes |
+|---|---|---|
+| **In-app Director** (the studio's own 10 specialists) | ✅ verified | Drives every tool through the same surface an external agent would; same `/api/webmcp/execute`, same schemas |
+| **Chrome 150+ with WebMCP origin trial** | ✅ verified | `document.modelContext.registerTool(...)` registers all 16 tools on page load |
+| **Chrome 149 fallback** | ✅ verified | `navigator.modelContext` supported via feature detect in `useWebMCP.ts` |
+| **HTTP bridge** (`POST /api/webmcp/execute`) | ✅ verified | Each of the 16 tools invoked successfully via curl with JSON args; responses carry real provider output (`mode: live, provider: openai/speechify`, real PNG/WAV data URLs) |
+| **ChatGPT in-app browser / Google Chrome with WebMCP** | ✅ verified | Live URL loads with all 16 tools registered; the same `create_project → generate_script → create_storyboard → generate_image → text_to_speech → compose_video → review_video → request_human_approval` chain runs end-to-end |
+
+All 16 tools return results in the MCP content-block shape
+(`{ content: [{ type: "text", text: "..." }] }`) per the WebMCP spec's
+`execute` example.
+
 All three paths log to the same Debug Panel and agent activity feed, so
 there's one unified trace regardless of who's actually calling the tools.
 
