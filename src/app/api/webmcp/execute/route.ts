@@ -674,7 +674,13 @@ async function listAvailableProviders(): Promise<unknown> {
 
 async function reviewVideo(input: Record<string, unknown>) {
   const project = await serverStore.getProject();
-  if (!project.composedVideoUrl) throw new Error("Nothing to review yet.");
+  if (!project.composedVideoUrl) {
+    // QA without a composed video isn't a failure — it's "blocked on the
+    // Video Editor". Setting agent status to blocked (not error) keeps
+    // the swarm reading correctly for judges watching the demo.
+    await serverStore.setAgentStatus("critic-qa", "blocked", "Waiting on the Video Editor to assemble the cut.");
+    return { verdict: "WAITING", notes: ["No composed video yet — call compose_video first."] };
+  }
   const notes: string[] = [];
   let verdict: "APPROVED" | "NEEDS_REVISION" = "APPROVED";
   if (project.scenes.some((s) => !s.caption)) {

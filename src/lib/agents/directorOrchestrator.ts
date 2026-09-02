@@ -364,9 +364,17 @@ async function step(agentId: AgentId, fn: () => Promise<string>): Promise<string
   // Close the agent's turn promptly instead of leaving it "working". Prior
   // behaviour left e.g. the Project Manager on "active" from its single
   // create_project call for the whole run — which read as "PM is slow".
+  //
+  // `Nothing to review yet` is informational — the QA tool returns it
+  // when there's no composedVideoUrl yet (e.g. a manual run from the
+  // debug panel). That's not an error, it's "blocked: waiting on the
+  // Video Editor". Treat it the same as the orchestrator's own
+  // verify() guard so the agent status reads as blocked, not failed.
+  const errored = /^Error|^No scene|^No scenes exist/i.test(result);
+  const blocked = !errored && /^Nothing to review/i.test(result);
   store.getState().setAgentStatus(
     agentId,
-    /^Error|^No scene|^Nothing to review|^No scenes exist/i.test(result) ? "error" : "completed",
+    errored ? "error" : blocked ? "blocked" : "completed",
   );
   store.getState().pushDirectorMessage("director", `${AGENTS[agentId].name}: ${result}`);
   return result;
@@ -430,7 +438,9 @@ async function processVeto(): Promise<void> {
 
 function verify(result: string, agentId: AgentId): boolean {
   const store = useStudioStore;
-  if (/^Error|^No scene|^Nothing to review|^No scenes exist/i.test(result)) {
+  // Same regex logic as `step()` — "Nothing to review yet" is informational
+  // (QA waiting on the Video Editor), not a pipeline-stopping failure.
+  if (/^Error|^No scene|^No scenes exist/i.test(result)) {
     store.getState().setAgentStatus(agentId, "error", `Stopping — ${result}`);
     store.getState().pushDirectorMessage("director", `Stopping: ${AGENTS[agentId].name} reported a problem — ${result}`);
     return false;

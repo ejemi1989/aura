@@ -24,6 +24,12 @@ export function reviewVideoTool(store: Store): WebMCPTool<Input> {
     execute: ({ checklistNotes }) => {
       const p = store.project;
       if (!p.composedVideoUrl) {
+        // QA without a composed video isn't an error — it's the agent
+        // being run out of order (e.g. a judge calls review_video from
+        // the debug panel before compose_video lands). Mark the agent
+        // as blocked so the swarm shows "waiting on the Video Editor"
+        // rather than the red Error badge.
+        store.setAgentStatus("critic-qa", "blocked", "Waiting on the Video Editor to assemble the cut.");
         return textResult("Nothing to review yet — call compose_video first.");
       }
       const notes: string[] = [];
