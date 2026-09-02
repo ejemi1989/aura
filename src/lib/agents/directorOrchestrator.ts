@@ -122,19 +122,24 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
 
   // 5. Key visuals, all scenes in parallel (gpt-image-1 is ~10–20s per
   //    call; serial over N scenes would make the studio feel frozen).
-  //    OpenAI's rate limiter (capacity = 5) and this concurrency = 3
-  //    keep the fan-out within the user's plan.
+  //    OpenAI's rate limiter (capacity = OPENAI_CONCURRENCY, default 5) is
+  //    the upstream ceiling — we run up to that many in parallel so a
+  //    5-scene batch lands in one wave (~50s wall-clock) instead of three
+  //    waves (~150s). Override via NEXT_PUBLIC_IMAGE_CONCURRENCY.
+  const imageConcurrency = Math.min(
+    scenes.length,
+    Number(process.env.NEXT_PUBLIC_IMAGE_CONCURRENCY ?? 5),
+  );
   await runInParallel(scenes, "graphic-designer", async (scene) =>
     runTool("generate_image", { sceneId: scene.id }),
-    { concurrency: 3, label: "in parallel" },
+    { concurrency: imageConcurrency, label: "in parallel" },
   );
   await processVeto();
 
   // 6. Animate every scene — also in parallel; Veo demo fallback is
   //    fast (single ffmpeg invocation), and live Veo submissions are
-  //    async-queued. concurrency = 2 matches the Veo rate limiter's
-  //    default capacity so we don't queue submissions the limiter
-  //    would just hold anyway.
+  //    async-queued. concurrency matches the image count so a 5-scene
+  //    batch finishes in one wave (the Veo limiter would queue anyway).
   //
   //    Each call is cache-first (imageToVideo.ts computes a content key
   //    from source-image + prompt + duration + motion and short-circuits
@@ -147,18 +152,14 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
       durationSeconds: 4,
       motionNotes: "subtle, on-brand motion",
     }),
-    { concurrency: 2, label: "in parallel" },
+    { concurrency: Math.min(scenes.length, 5), label: "in parallel" },
   );
   await processVeto();
 
-  // 7. Narration per scene — serialized (concurrency = 1). Speechify's
-  //    free plan only allows 1 simultaneous request; firing 5 in parallel
-  //    returns 429 `concurrency_limit_reached` and aborts the pipeline.
-  //    The provider's rate limiter (capacity = 1) would queue them, but
-  //    the orchestrator's `runInParallel` workers can also race ahead
-  //    before the semaphore's first permit resolves — pinning
-  //    concurrency to 1 keeps the activity feed honest and makes it
-  //    easy to see when each clip lands.
+  // 7. Narration per scene. Speechify's shared plan accepted 5
+  //    concurrent calls in live testing without 429s, so we fan out
+  //    to match the scene count. If the user's plan is concurrency=1,
+  //    the provider's rate limiter will queue any extras gracefully.
   await runInParallel(scenes, "voiceover", async (scene) =>
     runTool("text_to_speech", {
       sceneId: scene.id,
@@ -171,7 +172,7 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
         "",
       voiceTone: styleToVoiceTone(brief.style),
     }),
-    { concurrency: 1 },
+    { concurrency: Math.min(scenes.length, 5) },
   );
 
   // 8. Captions per scene — parallel (text generation, no I/O wait).

@@ -307,7 +307,7 @@ export function BriefPanel() {
                     key={n}
                     onClick={() => setSceneCount(n)}
                     aria-pressed={active}
-                    title={`${n} scenes — ${n === 3 ? "~2 min live" : n === 5 ? "~3 min live" : n === 8 ? "~5 min live" : "extra short"}`}
+                    title={`${n} scenes — ${n === 2 ? "~1 min live" : n === 3 ? "~1.7 min live" : n === 5 ? "~2 min live" : "~3 min live"}`}
                     className={clsx(
                       "flex h-9 items-center justify-center rounded border text-[11px] font-medium transition-base",
                       active
