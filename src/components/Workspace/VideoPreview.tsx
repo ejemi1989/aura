@@ -270,6 +270,7 @@ export function VideoPreview({ playback }: { playback: SyncedPlayback }) {
                 {!motionGraphicsEnabled && currentScene.videoUrl &&
                 !currentScene.videoUrl.endsWith(".png") &&
                 !currentScene.videoUrl.endsWith(".jpg") &&
+                !currentScene.videoUrl.startsWith("data:image/") &&
                 currentScene.videoUrl !== "__no_video__" ? (
                   <video
                     key={`${currentScene.id}-raw`}

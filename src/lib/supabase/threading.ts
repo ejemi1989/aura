@@ -28,6 +28,10 @@ const PROJECT_PREFIX_RE = /^projects\//;
 
 function extractStorageKey(url: string): string {
   if (!url) return "";
+  // Inline demo placeholders (data: URLs) have no durable storage key —
+  // returning "" makes threadArtifactToSupabase a no-op for them so we
+  // never persist a base64 blob as if it were a bucket object key.
+  if (url.startsWith("data:")) return "";
   // Local-disk fallback: /assets/<key>
   if (url.startsWith("/assets/")) return url.slice("/assets/".length);
   // R2: any absolute URL, return the path (drops query string from presigned URLs).

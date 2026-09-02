@@ -130,8 +130,9 @@ confirmation pattern (`client.requestUserInteraction`) to pause
 execution until the human responds in the on-screen modal — whether the
 studio is being driven by the in-app Director or an external agent.
 
-**Verification.** 6 automated gates, 39 acceptance tests, all passing
-on a clean dev server (`bash scripts/verify/build-mode.sh`). The
+**Verification.** 3 strategic pauses, 19 checklist items, 9 gate
+scripts, all passing on a clean dev server
+(`bash scripts/verify/build-mode.sh`). The
 WebMCP 16-tool regression and the external-agent-to-UI-bridge gates
 both end-to-end exercise the WebMCP paths against real Chrome.
 

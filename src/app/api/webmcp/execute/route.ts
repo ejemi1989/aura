@@ -16,6 +16,14 @@ interface ExecuteRequestBody {
 }
 
 /**
+ * Origin of the current request, derived from the reverse-proxy headers
+ * (set by Vercel) and memoized at the top of POST. Server-side tool calls
+ * use this to self-fetch the /api/generate/* routes. Falls back to
+ * STUDIO_PUBLIC_URL / VERCEL_URL and finally localhost for local dev.
+ */
+let requestOrigin: string | null = null;
+
+/**
  * DELETE — wipe the server-side studio state. Useful for resetting between
  * demo runs or tests. Not exposed to the in-app UI; intended for ops.
  */
@@ -38,6 +46,8 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
+
+  requestOrigin = resolveRequestOrigin(req);
 
   let body: ExecuteRequestBody;
   try {
@@ -703,7 +713,11 @@ function draftCaption(description: string, purpose: string, platform: string): s
 }
 
 async function callGenerate(path: string, body: Record<string, unknown>): Promise<any> {
-  const origin = process.env.STUDIO_PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+  const origin =
+    requestOrigin ??
+    process.env.STUDIO_PUBLIC_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+    `http://localhost:${process.env.PORT ?? 3000}`;
   const res = await fetch(`${origin}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -731,4 +745,23 @@ function isSecureRequest(req: NextRequest): boolean {
   const fwd = req.headers.get("x-forwarded-proto");
   if (fwd === "https") return true;
   return false;
+}
+
+/**
+ * Absolute origin for server-side self-fetch of the /api/generate/*
+ * routes. Prefers the reverse-proxy headers Vercel sets, then the
+ * STUDIO_PUBLIC_URL / VERCEL_URL env overrides, and finally localhost.
+ * Previously this hardcoded `http://localhost:3000`, which turned every
+ * HTTP-bridge generation call into an ECONNREFUSED "fetch failed" the
+ * moment a deployment without STUDIO_PUBLIC_URL ran outside localhost.
+ */
+function resolveRequestOrigin(req: NextRequest): string | null {
+  const proto = req.headers.get("x-forwarded-proto");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (proto && host) return `${proto}://${host}`;
+  if (host) {
+    if (host.startsWith("localhost") || host.startsWith("127.0.0.1")) return `http://${host}`;
+    return `https://${host}`;
+  }
+  return null;
 }

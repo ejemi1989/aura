@@ -79,7 +79,8 @@ extra lane for agents, never the only lane.
    context, the same 16 tools are exposed at
    `GET /api/webmcp/tools` (catalog) and `POST /api/webmcp/execute`
    (invoke a single tool by name with JSON args). State is persisted
-   to `.studio-state.json` so multi-step pipelines work across requests.
+   to `.studio-state.json` so multi-step pipelines work across requests
+   (in-memory per instance when the filesystem is read-only, e.g. Vercel).
 
 All three paths log to the same Debug Panel and agent activity feed, so
 there's one unified trace regardless of who's actually calling the tools.
@@ -143,6 +144,30 @@ All tool implementations live in `src/lib/webmcp/tools/` — one file per
 tool, each a small factory over the Zustand store so `execute` always reads
 and writes live state.
 
+## Deployed demo (zero credentials, serverless-safe)
+
+The live submission URL — **https://creative-studio-eight-vert.vercel.app** —
+is intentionally deployed with **no environment variables set**. Every
+provider key, R2 bucket, and Supabase credential is absent. The demo
+still runs end-to-end because:
+
+- **Demo-mode generation is fully self-contained.** When no provider key
+  is set, `/api/generate/*` renders real assets in pure Node — a
+  deterministic gradient PNG tuned to the prompt's hash, and a real WAV
+  whose pitch/melody is keyed to the scene's narration — and returns them
+  as inline `data:` URLs. No disk write, no external binary, so the
+  read-only serverless filesystem is never touched. (Local dev still
+  produces a real FFmpeg MP4 when `ffmpeg` is on `$PATH`; without it, and
+  on serverless, the preview falls back to a per-scene slideshow.)
+- **Self-fetch is origin-aware.** The HTTP bridge (`POST /api/webmcp/execute`)
+  resolves the deployed origin from Vercel's `x-forwarded-*` headers (and
+  `VERCEL_URL`) before calling `/api/generate/*`, instead of assuming
+  `localhost`. It works identically on localhost, a Vercel deployment, and
+  behind any reverse proxy. Set `STUDIO_PUBLIC_URL` to override.
+- **Hosted on Vercel** (`Hobby`, Node.js runtime, `maxDuration` tuned per
+  route). State is kept in-memory per function instance (best-effort
+  `.studio-state.json` write), which is exactly what a demo needs.
+
 ## Demo mode vs. production providers
 
 The generation tools (`generate_image`, `text_to_video`, `image_to_video`,
@@ -160,10 +185,24 @@ variables. With keys set, the routes call real APIs:
 | LLM Director | OpenAI `gpt-4.1-mini` | any OpenAI chat model | `OPENAI_API_KEY` |
 
 When no key is set, each route falls back to a deterministic placeholder
-asset (a 1×1 PNG for images, a silent WAV for TTS, a 32-byte stub mp4
-for video, a scene manifest for compose) so the studio remains runnable
-end-to-end. Set `DEMO_MODE=false` in production to make missing-provider
-return a 503 instead of a placeholder.
+that is **still a real, usable asset**:
+
+- **Images** — a real gradient PNG (1792×1024) whose colors are derived
+  from a stable hash of the prompt, so different briefs produce visibly
+  distinct storyboard frames. Returned as a `data:` URL.
+- **TTS** — a real sine-wave WAV whose pitch and melody are derived from
+  the narration text, so each scene sounds distinct. Returned as a `data:`
+  URL.
+- **Video** — a real FFmpeg MP4 (color card + prompt overlay) when
+  `ffmpeg` is on the server; otherwise the `__no_video__` sentinel, which
+  the preview substitutes with the scene's still image (slideshow path).
+- **Compose** — a scene manifest the `VideoPreview` plays as a slideshow
+  when FFmpeg is unavailable.
+
+Because the image/WAV placeholders are delivered inline, the zero-key demo
+has no dependency on a writable filesystem and runs unchanged on read-only
+serverless platforms (see "Deployed demo" above). Set `DEMO_MODE=false` in
+production to make missing-provider return a 503 instead of a placeholder.
 
 `/api/generate/compose` shells out to ffmpeg when available (transitions:
 cut / crossfade / whip-pan / match-cut; xfade filter for non-cut
@@ -213,7 +252,9 @@ creative-studio/
 │   │   ├── agents/               # Registry + deterministic orchestrator
 │   │   └── store/                # Zustand client store
 │   └── types/                    # Shared TypeScript types
-├── public/assets/                # Generated images / audio / video land here
+├── public/assets/                # Generated assets (FFmpeg MP4s on local dev);
+│   │                             #   demo placeholders render as inline data: URLs
+│   │                             #   on read-only serverless filesystems
 └── docs/DEMO_SCRIPT.md
 ```
 
@@ -259,7 +300,8 @@ curl -X DELETE http://localhost:3010/api/webmcp/execute
 ```
 
 State is persisted to `.studio-state.json` so multi-step pipelines survive
-across separate HTTP requests. For multi-tenant production, swap
+across separate HTTP requests (in-memory per function instance when the
+filesystem is read-only). For multi-tenant production, swap
 `src/lib/webmcp/serverStore.ts` for a Postgres/Redis-backed store keyed
 by `projectId`.
 
@@ -267,7 +309,7 @@ by `projectId`.
 
 - Works fully with WebMCP unavailable (test with the Chrome flag off) — the
   in-app Director path never touches `document.modelContext` / `navigator.modelContext`.
-- `await document.modelContext.getTools()` lists all 13 registered tools with
+- `await document.modelContext.getTools()` lists all 16 registered tools with
   their `name`, `description`, `inputSchema`, `origin`, and owner `window`.
 - `const tool = (await document.modelContext.getTools()).find(t => t.name === "create_project")`
   then `await document.modelContext.executeTool(tool, { name: "Test", goal: "...", audience: "...", platform: "instagram", style: "casual" })`

@@ -48,7 +48,7 @@ instead.
 | | |
 | --- | --- |
 | **Browser automation** | `playwright-core` driving system Chrome (macOS). |
-| **Test harness** | `scripts/verify/` — 6 gates, 39 acceptance tests, all passing. |
+| **Test harness** | `scripts/verify/` — 3 strategic pauses, 19 checklist items, 9 gate scripts, all passing. |
 | **Build-mode driver** | `scripts/verify/build-mode.sh` — runs the 3 strategic pauses and reports per-checklist-item pass/fail. |
 
 ## What's NOT used (deliberately)

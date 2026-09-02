@@ -1,10 +1,21 @@
 # Demo Instructions
 
 A 90-second run sheet for judges. The demo is **zero-key** — the
-studio runs end-to-end in demo mode without any external API keys.
-Two scripts and one short interaction cover everything.
+studio runs end-to-end in demo mode without any external API keys, and
+it runs the same against the **deployed live URL** (no install needed)
+as it does on a local demo box. Two scripts and one short interaction
+cover everything.
 
 ## Setup (30 seconds, before the judge arrives)
+
+**Primary path — deployed live URL (no install, no local server):**
+Open **https://creative-studio-eight-vert.vercel.app** in Chrome. The
+studio is deployed with **zero environment variables** — demo mode is
+baked in, so everything below works exactly the same as on the demo
+box. (Optional: reset server state with
+`curl -X DELETE https://creative-studio-eight-vert.vercel.app/api/webmcp/execute`.)
+
+**Fallback — local demo box:**
 
 ```bash
 # 1. Install dependencies (first time only).
@@ -105,8 +116,8 @@ If the judge wants to drive the studio with a browser agent:
 ## Files referenced
 
 - `README.md` — full quick-start + clean-startup instructions.
-- `BUILD-MODE.md` — the Build-mode contract (6 gates, 39 acceptance
-  tests, 3 strategic pauses).
+- `BUILD-MODE.md` — the Build-mode contract (3 strategic pauses,
+  19 checklist items, 9 gate scripts).
 - `scripts/verify/build-mode.sh` — the autonomous Build-mode driver.
 - `.context/data/demo-run-sheet.md` — the original 90s run sheet.
 - `.context/data/submission/12-positioning.md` — the leading

@@ -92,11 +92,15 @@ clicks Approve in the in-page modal.
 
 The studio is **demo-mode by default** (`DEMO_MODE=true`). Every
 `/api/generate/*` route checks for a matching provider key; if
-absent, it returns a deterministic placeholder asset (a 1×1 PNG for
-images, a silent WAV for TTS, a stub mp4 for video, a scene manifest
-for compose). This means the studio runs end-to-end **with zero API
-keys** — judges can `curl` and run the studio immediately. Real
-providers are wired and configurable via `.env.local`; see
+absent, it returns a deterministic placeholder asset that is still a
+real, usable asset — a gradient PNG keyed to the prompt hash, a WAV
+keyed to the narration, an FFmpeg MP4 when `ffmpeg` exists on the
+server, and a scene manifest for compose. Images and audio are
+delivered as inline `data:` URLs, so the zero-key demo writes nothing
+to disk and runs unchanged on read-only serverless platforms. This
+means the studio runs end-to-end **with zero API keys** — judges can
+`curl` and run the studio immediately. Real providers are wired and
+configurable via `.env.local`; see
 `.env.example` for the full list (`OPENAI_API_KEY`, `FAL_KEY`,
 `SPEECHIFY_API_KEY`, `RUNWAY_API_KEY`, `LUMA_API_KEY`,
 `REPLICATE_API_TOKEN`).
@@ -123,7 +127,8 @@ PORT=3010 npm run dev          # start the studio
 bash scripts/verify/build-mode.sh    # full Build mode, 3 strategic pauses
 ```
 
-Build mode runs 6 gates and 39 acceptance tests, each with a
+Build mode runs 3 strategic pauses, 19 checklist items, and 9 gate
+scripts (see `BUILD-MODE.md`), each with a
 concrete verification command. See `BUILD-MODE.md` for the contract.
 
 ## Open source

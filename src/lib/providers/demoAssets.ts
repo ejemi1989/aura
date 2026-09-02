@@ -8,7 +8,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { writeFile, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomBytes, createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
@@ -21,21 +21,21 @@ const exec = promisify(execFile);
 
 /**
  * Renders a deterministic but visually distinct placeholder for a given
- * prompt as a real 1792×1024 PNG — generated entirely in Node with zero
- * external binaries (no rsvg-convert, no ImageMagick). We write the PNG
- * container and scanlines by hand and compress IDAT with node:zlib, so it
- * works identically on any machine the app runs on.
+ * prompt as a real PNG — generated entirely in Node with zero external
+ * binaries (no rsvg-convert, no ImageMagick). We write the PNG container
+ * and scanlines by hand and compress IDAT with node:zlib, so it works
+ * identically on any machine the app runs on.
  *
  * The design is a vertical dual-hue gradient with a soft "glow" accent and
  * a title card region, color derived from a stable hash of the prompt so
  * different briefs render visually distinct storyboard frames.
+ *
+ * Delivery: the PNG is returned as an inline `data:` URL. This keeps the
+ * zero-key demo working on serverless platforms (Vercel, etc.) whose
+ * filesystem is read-only — no `public/assets` write that would throw
+ * EROFS. The browser renders data URLs in <img>/<audio> natively.
  */
 export async function renderDemoImage(prompt: string, id: string): Promise<string> {
-  const dir = join(process.cwd(), "public", "assets");
-  await mkdir(dir, { recursive: true });
-  const filename = `${id}.png`;
-  const outPath = join(dir, filename);
-
   const hash = createHash("sha256").update(prompt).digest();
   const hue = hash[0];
   const hue2 = (hash[1] + 60) % 360;
@@ -76,8 +76,7 @@ export async function renderDemoImage(prompt: string, id: string): Promise<strin
   }
 
   const png = encodePng(W, H, buf);
-  await writeFile(outPath, png);
-  return `/assets/${filename}`;
+  return `data:image/png;base64,${png.toString("base64")}`;
 }
 
 /* ------------------------- pure-Node PNG encoder ----------------------- */
@@ -170,11 +169,6 @@ function crc32(type: Buffer, data: Buffer, table: Int32Array): number {
  * bars, and the timeline view shows the right length.
  */
 export async function renderDemoTone(id: string, voiceTone: string = "warm", textHint: string = ""): Promise<{ url: string; durationMs: number }> {
-  const dir = join(process.cwd(), "public", "assets");
-  await mkdir(dir, { recursive: true });
-  const filename = `${id}.wav`;
-  const outPath = join(dir, filename);
-
   // Pick a base frequency per voice tone so the demo audio is
   // perceptually distinct between voice moods.
   const baseFreq: Record<string, number> = {
@@ -243,8 +237,9 @@ export async function renderDemoTone(id: string, voiceTone: string = "warm", tex
     buf.writeInt16LE(Math.round(sample * 32767), 44 + i * 2);
   }
 
-  await writeFile(outPath, buf);
-  return { url: `/assets/${filename}`, durationMs: durationSec * 1000 };
+  // Delivered inline as a data URL (see renderDemoImage: serverless
+  // filesystems are read-only, so we never write to public/assets).
+  return { url: `data:audio/wav;base64,${buf.toString("base64")}`, durationMs: durationSec * 1000 };
 }
 
 /* ---------------------------------------------------------------------- */
@@ -254,19 +249,16 @@ export async function renderDemoTone(id: string, voiceTone: string = "warm", tex
 /**
  * Generates a short mp4 with ffmpeg showing the scene's description over
  * a colored background — a real, playable video that previews correctly
- * in the <video> element. Falls back to a stub file if ffmpeg is missing
- * (the UI will detect this and switch to the slideshow path).
+ * in the <video> element. When ffmpeg is missing OR the filesystem is
+ * read-only (serverless), it falls back to the "__no_video__" sentinel
+ * with no disk write; the UI detects this and substitutes the scene's
+ * still image (slideshow path).
  */
 export async function renderDemoVideo(
   id: string,
   prompt: string,
   durationSeconds: number
 ): Promise<{ url: string }> {
-  const dir = join(process.cwd(), "public", "assets");
-  await mkdir(dir, { recursive: true });
-  const filename = `${id}.mp4`;
-  const outPath = join(dir, filename);
-
   // Pick a stable color per scene so the demo video matches the demo
   // image's color family.
   const hash = createHash("sha256").update(prompt).digest();
@@ -276,6 +268,11 @@ export async function renderDemoVideo(
   const color = `0x${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
 
   try {
+    const dir = join(process.cwd(), "public", "assets");
+    await mkdir(dir, { recursive: true });
+    const filename = `${id}.mp4`;
+    const outPath = join(dir, filename);
+
     // 30fps, h264, AAC audio (silent), 1280x720, with a color background
     // and a drawtext overlay showing the first 60 chars of the prompt.
     const safeText = prompt.replace(/[\\':%]/g, "").slice(0, 60);
@@ -299,13 +296,10 @@ export async function renderDemoVideo(
     await exec("ffmpeg", args, { timeout: 60_000 });
     return { url: `/assets/${filename}` };
   } catch {
-    // No ffmpeg — we can't produce a real mp4. The VideoPreview will
-    // detect playback failure and fall back to the slideshow path, so
-    // it's safe to return a sentinel. We use a "no video" marker that
-    // the in-app tool can recognize and substitute with the scene's
-    // still image instead.
-    const buf = Buffer.from("NO_VIDEO", "utf-8");
-    await writeFile(outPath, buf);
+    // No ffmpeg, or the filesystem is read-only (serverless). We can't
+    // produce a real mp4 — return the sentinel that the in-app tool and
+    // the VideoPreview substitute with the scene's still image. No file
+    // write here: on read-only filesystems even a stub write would throw.
     return { url: "__no_video__" };
   }
 }

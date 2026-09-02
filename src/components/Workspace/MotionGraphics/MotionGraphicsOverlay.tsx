@@ -101,6 +101,7 @@ export function MotionGraphicsOverlay({
           {scene.videoUrl &&
           !scene.videoUrl.endsWith(".png") &&
           !scene.videoUrl.endsWith(".jpg") &&
+          !scene.videoUrl.startsWith("data:image/") &&
           scene.videoUrl !== "__no_video__" ? (
             // eslint-disable-next-line @next/next/no-img-element
             <video

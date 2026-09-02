@@ -132,7 +132,9 @@ that the human UI uses is the surface any agent picks up.
 
 ## Demo
 
-The studio runs **with zero API keys** in demo mode. To see it:
+The studio runs **with zero API keys** in demo mode. The deployed live
+URL (**https://creative-studio-eight-vert.vercel.app**) runs the same
+flow with nothing to install; to run it locally:
 
 ```bash
 npm install
@@ -161,8 +163,8 @@ deterministic placeholders so the studio runs without keys.
 ## Verification
 
 `bash scripts/verify/build-mode.sh` runs the full Build-mode
-verification: 6 gates, 39 acceptance tests, 3 strategic pauses, all
-passing. See `BUILD-MODE.md` for the contract.
+verification: 3 strategic pauses, 19 checklist items, 9 gate scripts,
+all passing. See `BUILD-MODE.md` for the contract.
 
 ## Open source
 

@@ -105,6 +105,7 @@ function clamp(n: number, lo: number, hi: number) {
 
 async function ensureAbsoluteUrl(url: string): Promise<string> {
   if (/^https?:\/\//.test(url)) return url;
+  if (url.startsWith("data:")) return url; // inline demo placeholder — providers can't use it, but don't mangle it
   const { headers } = await import("next/headers");
   const h = headers();
   const host = h.get("host") ?? "localhost:3000";

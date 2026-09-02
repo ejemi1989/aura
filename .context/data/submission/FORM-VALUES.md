@@ -71,7 +71,8 @@ Director would.
 - **Results** in the WebMCP shape via `textResult(...)`.
 - **Human Veto** via `client.requestUserInteraction`.
 - Verified against the W3C source (`webmachinelearning/webmcp`).
-- 7 automated gates, 52 acceptance tests, all passing.
+- Verified mechanically by the Build-mode harness: 3 strategic pauses,
+  19 checklist items, 9 gate scripts (see `BUILD-MODE.md`).
 
 ---
 
@@ -112,39 +113,25 @@ in-app browser) can drive the same 16 tools.
 
 ## What's still required from you (one-time actions)
 
-Devpost needs three artifacts only you can produce. Everything else
-is answered above.
+Two of the three Devpost artifacts are already in place; one remains.
 
-### 1. Working live URL
-The studio runs end-to-end locally on port 3010. To give Devpost a
-public URL, deploy to one of:
-- **Vercel** (recommended — one-click for Next.js):
-  `vercel deploy --prod` from the repo root, then copy the URL.
-- **Netlify**, **Cloudflare Pages**, or **ChatGPT Sites** also work.
+### 1. Working live URL — DONE
+The studio is deployed and verified on **Vercel**:
+`https://creative-studio-eight-vert.vercel.app`. No environment variables
+are set on the deployment — the demo runs end-to-end in zero-key mode,
+and the full pipeline (create → script → storyboard → image → motion →
+voice → captions → compose → review → human-gate) was re-verified
+against the live URL. Redeploy anytime with `vercel deploy --prod`.
 
-### 2. Public code repository
-The project is a git repo at `/Users/oladimeji/Downloads/creative-studio`,
-but its `origin` remote currently points to a different repo
-(`github.com/ejemi1989/dietaryid.git`). For Devpost we need a fresh
-public repo. I've updated `package.json`'s `repository` and
-`homepage` fields to:
-`https://github.com/ejemi1989/aura-webmcp-creative-studio`
+### 2. Public code repository — DONE
+Public repo: **https://github.com/ejemi1989/aura** (branch `main`,
+MIT `LICENSE` committed, issues enabled, first commit 2026-08-31 —
+inside the Hackathon Submission Period). Devpost's license scanner
+will pick up the MIT LICENSE automatically.
 
-To publish:
-```bash
-cd /Users/oladimeji/Downloads/creative-studio
-# Create the empty repo on GitHub first (web UI), then:
-git remote remove origin
-git remote add origin https://github.com/ejemi1989/aura-webmcp-creative-studio.git
-git push -u origin main
-```
-
-The LICENSE at the repo root (MIT) will be auto-detected by Devpost's
-license scanner once the repo is public.
-
-### 3. <3 min public YouTube demo
+### 3. <3 min public YouTube demo — REMAINING
 The 90-second script is at `.context/data/submission/10-demo-video.md`.
-Record the screen at `http://localhost:3010` driving the five beats
-(idle → plan preview → crew → approval → reject + remake → re-approval
-→ complete → export), upload to YouTube as unlisted or public, paste
-the URL into Devpost.
+Record the screen at `https://creative-studio-eight-vert.vercel.app`
+(no keys needed) driving the beats: idle → plan preview → crew → human
+veto → reject + remake → re-approval → complete → export. Upload to
+YouTube as unlisted or public, then paste the URL into Devpost.
