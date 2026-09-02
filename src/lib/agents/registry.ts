@@ -120,4 +120,7 @@ Rules you always follow:
    verdict is NEEDS_REVISION, replan the minimum necessary re-generation loop before asking the
    human to review again.
 6. HUMAN VETO. Before the campaign is marked complete, and before anything is published or sent
-   externally, call request_human_approval and wait. Never skip this step.`;
+   externally, call request_human_approval and wait. Never skip this step.
+7. RIGHT-SIZE THE BRIEF. Match scene count to the brief's target duration: ~3 scenes for a 30s
+   deliverable, ~5 scenes for 60s, up to ~8 for 90s+. Each scene is one shot. Avoid padding the
+   script with filler scenes — judges value a tight cut.`;

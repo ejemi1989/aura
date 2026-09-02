@@ -66,6 +66,7 @@ export function BriefPanel() {
   const [platform, setPlatform] = useState<CreativeBrief["platform"]>(INITIAL_TEMPLATE.platform);
   const [style, setStyle] = useState<CreativeBrief["style"]>(INITIAL_TEMPLATE.style);
   const [duration, setDuration] = useState(INITIAL_TEMPLATE.targetDurationSeconds ?? 30);
+  const [sceneCount, setSceneCount] = useState<number>(3);
   const [activeCategory, setActiveCategory] = useState<CampaignCategory>(CAMPAIGN_CATEGORIES[0]);
   const [vetoFeedback, setVetoFeedback] = useState("");
 
@@ -83,6 +84,9 @@ export function BriefPanel() {
   async function handleRun() {
     if (running) return;
     setRunning(true);
+    // Pin the orchestrator's default scene count to the user's pick so the
+    // run honors it (deterministic path reads from env at call time).
+    process.env.NEXT_PUBLIC_PRESENTATION_MODE_SCENES = String(sceneCount);
     try {
       await runCreativeDirector({
         name: name.trim() || "Untitled Campaign",
@@ -289,6 +293,32 @@ export function BriefPanel() {
               <div className="w-14 rounded-md border border-border bg-background px-2 py-1 text-right font-mono text-[11px] tabular-nums text-foreground">
                 {duration}s
               </div>
+            </div>
+          </IconField>
+
+          <IconField label="Scenes" icon={<SparkleIcon className="h-3.5 w-3.5" />}>
+            <div className="grid w-full grid-cols-4 gap-1">
+              {[2, 3, 5, 8].map((n) => {
+                const active = sceneCount === n;
+                const label =
+                  n === 2 ? "2" : n === 3 ? "3 · Fast" : n === 5 ? "5 · Std" : "8 · Long";
+                return (
+                  <button
+                    key={n}
+                    onClick={() => setSceneCount(n)}
+                    aria-pressed={active}
+                    title={`${n} scenes — ${n === 3 ? "~2 min live" : n === 5 ? "~3 min live" : n === 8 ? "~5 min live" : "extra short"}`}
+                    className={clsx(
+                      "flex h-9 items-center justify-center rounded border text-[11px] font-medium transition-base",
+                      active
+                        ? "border-transparent bg-background text-foreground shadow-[0_0_0_2px_var(--color-primary)]"
+                        : "border-border bg-background text-muted-foreground hover:border-border/80",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </IconField>
 

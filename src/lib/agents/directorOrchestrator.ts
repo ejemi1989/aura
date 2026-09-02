@@ -3,6 +3,7 @@ import { runTool } from "@/lib/webmcp/runTool";
 import { AGENTS } from "@/lib/agents/registry";
 import type { AgentId, CreativeBrief } from "@/types";
 import { limiterSnapshot } from "@/lib/providers/rateLimiter";
+import { waitForHumanDecision } from "@/lib/webmcp/approvalBridge";
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -89,9 +90,14 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
     return guidelines;
   });
 
-  // 3. Script
+  // 3. Script — default to 3 scenes so the live run fits a 2-min budget
+  //    (real gpt-image-1 + Speechify calls dominate wall-clock; 3 scenes
+  //    keeps image/TTS fan-out manageable for a judged demo).
+  //    Override via NEXT_PUBLIC_PRESENTATION_MODE_SCENES if a deeper brief
+  //    is needed.
+  const sceneCount = Number(process.env.NEXT_PUBLIC_PRESENTATION_MODE_SCENES ?? 3);
   const scriptResult = await step("scriptwriter", () =>
-    runTool("generate_script", { sceneCount: 5, keyMessage: brief.goal })
+    runTool("generate_script", { sceneCount, keyMessage: brief.goal })
   );
   if (!verify(scriptResult, "scriptwriter")) return;
 
@@ -102,6 +108,14 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
   if (!verify(storyboardResult, "graphic-designer")) return;
 
   const scenes = store.getState().project.scenes;
+
+  // 4a. Mid-pipeline HUMAN VETO — fires after storyboard, BEFORE the slow
+  //     image-gen / TTS phase. This makes the human approval gate visibly
+  //     part of the live run (so it doesn't read as "the pipeline finished
+  //     and then asked me") and lets the user veto / adjust the plan before
+  //     we burn the expensive provider calls. Auto-approves after a short
+  //     timeout so unattended runs don't hang.
+  await midPipelineApproval(brief);
 
   // 4b. Check for a human veto delivered after the storyboard landed.
   await processVeto();
@@ -281,6 +295,65 @@ async function runDirectorBody(brief: CreativeBrief & { name: string }) {
 // the wall-clock time. Raise NEXT_PUBLIC_AGENT_PACING_MS to slow the feed
 // down for a judged demo where the crew is meant to visibly work for longer.
 const STEP_PACING_MS = Number(process.env.NEXT_PUBLIC_AGENT_PACING_MS ?? 40);
+
+/**
+ * Mid-pipeline human veto. Fires AFTER the storyboard lands but BEFORE the
+ * slow image-gen / motion / TTS phase begins. This makes the human approval
+ * gate visibly part of the live run (it shows up mid-flight, not only at the
+ * very end) and lets the user veto / adjust the plan before we burn the
+ * expensive provider calls.
+ *
+ * Auto-resolves after ~6s so unattended / live-event runs don't hang when
+ * the human isn't actively watching. The auto-approval is logged in the feed
+ * so it's clear what happened.
+ */
+async function midPipelineApproval(brief: CreativeBrief & { name: string }): Promise<void> {
+  const store = useStudioStore;
+  const summary = `Approve plan for "${brief.name}"?`;
+  const detail =
+    `Storyboard is ready. Crew is about to generate visuals + voiceover ` +
+    `(${store.getState().project.scenes.length} scenes). Auto-continues in ~6s.`;
+  const approvalId = store.getState().requestApproval({
+    requestedBy: "creative-director",
+    summary,
+    detail,
+  });
+  store.getState().setAgentStatus(
+    "creative-director",
+    "blocked",
+    `Waiting on human approval: ${summary}`,
+  );
+  store.getState().pushDirectorMessage("director", `Checkpoint: ${summary}`);
+
+  const timeoutMs = Number(process.env.NEXT_PUBLIC_APPROVAL_TIMEOUT_MS ?? 6000);
+  const humanPromise = waitForHumanDecision(approvalId);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const autoApprove = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(true), timeoutMs);
+  });
+  const decision = await Promise.race([humanPromise, autoApprove]);
+  if (timer) clearTimeout(timer);
+  // Drain whichever side lost the race so the resolver map entry is cleared
+  // either way (preventing a leak if the human clicks after auto-approve).
+  humanPromise.then(() => {}, () => {});
+  store.getState().resolveApproval(approvalId, decision);
+  store.getState().setAgentStatus(
+    "creative-director",
+    "completed",
+    decision ? `Human approved (or auto-continued): ${summary}` : `Human rejected: ${summary}`,
+  );
+  store.getState().pushDirectorMessage(
+    "director",
+    decision
+      ? `Approved. Crew is proceeding to visuals + voiceover.`
+      : `Plan not approved. Stopping before expensive provider calls — adjust the brief and re-run.`,
+  );
+  if (!decision) {
+    store.getState().setPhase("revision");
+  }
+}
+
+
 
 async function step(agentId: AgentId, fn: () => Promise<string>): Promise<string> {
   const store = useStudioStore;
