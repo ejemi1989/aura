@@ -1,4 +1,4 @@
-# Creative Studio
+#  Aura Creative Studio
 
 An agent-native multi-agent video creative studio, built for the OpenAI
 WebMCP Challenge. Ten specialist AI agents — Creative Director, Brand
